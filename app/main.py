@@ -276,6 +276,8 @@ def add_keyword(keyword: KeywordCreate, db: Session = Depends(get_db)):
             existing.active = True
             db.commit()
             db.refresh(existing)
+            # Scan existing articles for this reactivated keyword
+            scan_existing_articles_for_keyword(db, word)
             return existing
         raise HTTPException(status_code=400, detail="Keyword already exists")
 
@@ -283,7 +285,51 @@ def add_keyword(keyword: KeywordCreate, db: Session = Depends(get_db)):
     db.add(db_keyword)
     db.commit()
     db.refresh(db_keyword)
+
+    # Scan existing articles for this new keyword
+    scan_existing_articles_for_keyword(db, word)
+
     return db_keyword
+
+
+def scan_existing_articles_for_keyword(db: Session, keyword: str):
+    """Scan all existing articles for a keyword and create alerts."""
+    from .scraper import check_keywords
+
+    # Get all articles
+    articles = db.query(NewsArticle).all()
+    # Get all stocks (to link alerts)
+    stocks = {s.symbol: s for s in db.query(Stock).all()}
+
+    alerts_created = 0
+    for article in articles:
+        text_to_check = f"{article.title} {article.summary or ''}"
+        if keyword.lower() in text_to_check.lower():
+            # Check if alert already exists for this article
+            stock = stocks.get(article.stock_symbol)
+            if stock:
+                existing_alert = db.query(Alert).filter(
+                    Alert.article_id == article.id,
+                    Alert.stock_id == stock.id
+                ).first()
+
+                if existing_alert:
+                    # Update matched keywords if not already included
+                    if keyword.lower() not in existing_alert.matched_keywords.lower():
+                        existing_alert.matched_keywords += f", {keyword}"
+                else:
+                    # Create new alert
+                    alert = Alert(
+                        stock_id=stock.id,
+                        article_id=article.id,
+                        matched_keywords=keyword,
+                    )
+                    db.add(alert)
+                    alerts_created += 1
+
+    if alerts_created > 0:
+        db.commit()
+        logger.info(f"Created {alerts_created} alerts for keyword '{keyword}'")
 
 
 @app.delete("/api/keywords/{keyword_id}")
