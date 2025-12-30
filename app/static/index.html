@@ -482,7 +482,10 @@
                     <div class="p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition">
                         <div class="flex justify-between items-start mb-1">
                             <span class="font-semibold text-blue-600 text-sm">${article.stock_symbol || 'General'}</span>
-                            <span class="text-xs text-gray-500">${formatDate(article.fetched_at)}</span>
+                            <div class="text-right">
+                                ${article.published_at ? `<span class="text-xs text-gray-600">Published: ${formatDate(article.published_at)}</span>` : ''}
+                                <span class="text-xs text-gray-400 block">Scraped: ${formatDate(article.fetched_at)}</span>
+                            </div>
                         </div>
                         <a href="${article.url}" target="_blank" class="text-gray-800 hover:text-blue-600 block">
                             ${article.title}
