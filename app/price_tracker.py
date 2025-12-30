@@ -215,3 +215,89 @@ def is_market_hours() -> bool:
     market_close = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
 
     return market_open <= now_et <= market_close
+
+
+def get_historical_prices_for_alert(
+    symbol: str,
+    alert_time: datetime
+) -> dict:
+    """
+    Get historical prices for backtesting an alert.
+    Returns prices at alert time, +1h, and +1d.
+
+    Note: yfinance limitations:
+    - Intraday (hourly) data: only ~7 days back
+    - Daily data: available for years
+
+    For older alerts, we approximate using daily open/close.
+    """
+    if not YFINANCE_AVAILABLE:
+        return {"error": "yfinance not available"}
+
+    try:
+        ticker = yf.Ticker(symbol)
+
+        # Make alert_time timezone-aware if it isn't
+        if alert_time.tzinfo is None:
+            alert_time = alert_time.replace(tzinfo=ZoneInfo("UTC"))
+
+        now = datetime.now(ZoneInfo("UTC"))
+        days_ago = (now - alert_time).days
+
+        result = {
+            "symbol": symbol,
+            "alert_time": alert_time.isoformat(),
+            "price_at_alert": None,
+            "price_1h": None,
+            "price_1d": None,
+            "data_quality": "unknown"
+        }
+
+        # Determine what data we can get
+        if days_ago <= 7:
+            # Can use intraday data for better precision
+            hist = ticker.history(period="7d", interval="1h")
+            result["data_quality"] = "hourly"
+        elif days_ago <= 60:
+            # Use daily data
+            hist = ticker.history(period="3mo", interval="1d")
+            result["data_quality"] = "daily"
+        else:
+            # Older data
+            hist = ticker.history(period="1y", interval="1d")
+            result["data_quality"] = "daily"
+
+        if hist.empty:
+            result["error"] = "No historical data available"
+            return result
+
+        # Convert index to UTC for comparison
+        hist.index = hist.index.tz_convert("UTC")
+
+        # Find price at alert time
+        time_diffs = abs(hist.index - alert_time)
+        if len(time_diffs) > 0:
+            nearest_idx = time_diffs.argmin()
+            result["price_at_alert"] = float(hist['Close'].iloc[nearest_idx])
+
+        # Find price at +1h (if hourly data available)
+        time_1h = alert_time + timedelta(hours=1)
+        if time_1h <= now:
+            time_diffs_1h = abs(hist.index - time_1h)
+            if len(time_diffs_1h) > 0:
+                nearest_idx_1h = time_diffs_1h.argmin()
+                result["price_1h"] = float(hist['Close'].iloc[nearest_idx_1h])
+
+        # Find price at +1d
+        time_1d = alert_time + timedelta(days=1)
+        if time_1d <= now:
+            time_diffs_1d = abs(hist.index - time_1d)
+            if len(time_diffs_1d) > 0:
+                nearest_idx_1d = time_diffs_1d.argmin()
+                result["price_1d"] = float(hist['Close'].iloc[nearest_idx_1d])
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error fetching historical prices for {symbol}: {e}")
+        return {"error": str(e)}

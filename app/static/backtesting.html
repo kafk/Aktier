@@ -53,17 +53,26 @@
 
         <!-- Actions -->
         <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
-            <div class="flex flex-wrap gap-3">
-                <button onclick="trackAllUntracked()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
-                    Track All Alerts
+            <h2 class="text-lg font-semibold text-gray-800 mb-3">Actions</h2>
+            <div class="flex flex-wrap gap-3 mb-3">
+                <button onclick="createTrackingForAll()" class="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+                    Backfill All Historical Data
+                </button>
+                <button onclick="backfillHistorical()" class="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+                    Retry Failed/Pending
                 </button>
                 <button onclick="updatePrices()" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
-                    Update Prices
+                    Update Recent Prices
                 </button>
                 <button onclick="loadStats()" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
                     Refresh Stats
                 </button>
             </div>
+            <p class="text-xs text-gray-500">
+                <strong>Backfill All:</strong> Fetch historical prices for all alerts (may take time).
+                <strong>Retry Failed:</strong> Re-attempt fetching for pending/error records.
+                <strong>Update Recent:</strong> Get latest prices for alerts waiting for +1h/+1d data.
+            </p>
         </div>
 
         <!-- Weight Recommendations -->
@@ -245,6 +254,51 @@
                 `).join('');
             } catch (error) {
                 console.error('Error loading recommendations:', error);
+            }
+        }
+
+        async function createTrackingForAll() {
+            if (!confirm('This will fetch historical prices for ALL alerts. This may take a while. Continue?')) {
+                return;
+            }
+            try {
+                const btn = event.target;
+                btn.disabled = true;
+                btn.textContent = 'Fetching...';
+
+                const response = await fetch(`${API_BASE}/backtesting/create-tracking-for-all`, { method: 'POST' });
+                const result = await response.json();
+                alert(result.message);
+                loadStats();
+                loadTracking();
+                loadRecommendations();
+
+                btn.disabled = false;
+                btn.textContent = 'Backfill All Historical Data';
+            } catch (error) {
+                console.error('Error backfilling:', error);
+                alert('Error backfilling historical data');
+            }
+        }
+
+        async function backfillHistorical() {
+            try {
+                const btn = event.target;
+                btn.disabled = true;
+                btn.textContent = 'Fetching...';
+
+                const response = await fetch(`${API_BASE}/backtesting/backfill-historical`, { method: 'POST' });
+                const result = await response.json();
+                alert(result.message);
+                loadStats();
+                loadTracking();
+                loadRecommendations();
+
+                btn.disabled = false;
+                btn.textContent = 'Retry Failed/Pending';
+            } catch (error) {
+                console.error('Error backfilling:', error);
+                alert('Error backfilling historical data');
             }
         }
 

@@ -39,6 +39,7 @@ from .price_tracker import (
     calculate_price_change,
     price_change_to_impact,
     get_weight_adjustment_recommendation,
+    get_historical_prices_for_alert,
 )
 
 import logging
@@ -950,6 +951,191 @@ def manual_price_entry(
     db.commit()
     db.refresh(tracking)
     return tracking
+
+
+@app.post("/api/backtesting/backfill-historical")
+def backfill_historical_prices(db: Session = Depends(get_db)):
+    """
+    Backfill historical prices for existing alerts.
+    Fetches prices at alert time, +1h, and +1d from yfinance.
+
+    Note: yfinance limitations:
+    - Hourly data only available for ~7 days
+    - Daily data available for older alerts (less precise)
+    """
+    # Get all tracking records that need data
+    tracking_records = db.query(PriceTracking).filter(
+        PriceTracking.status.in_(["pending", "partial", "error"])
+    ).all()
+
+    results = {
+        "total": len(tracking_records),
+        "updated": 0,
+        "completed": 0,
+        "errors": 0,
+        "details": []
+    }
+
+    for tracking in tracking_records:
+        alert = db.query(Alert).filter(Alert.id == tracking.alert_id).first()
+        if not alert:
+            continue
+
+        # Fetch historical prices
+        hist_data = get_historical_prices_for_alert(
+            tracking.stock_symbol,
+            tracking.alert_time
+        )
+
+        detail = {
+            "symbol": tracking.stock_symbol,
+            "alert_time": tracking.alert_time.isoformat(),
+            "data_quality": hist_data.get("data_quality", "unknown")
+        }
+
+        if "error" in hist_data:
+            detail["error"] = hist_data["error"]
+            results["errors"] += 1
+            tracking.status = "error"
+        else:
+            # Update prices
+            if hist_data.get("price_at_alert") and not tracking.price_at_alert:
+                tracking.price_at_alert = hist_data["price_at_alert"]
+                detail["price_at_alert"] = hist_data["price_at_alert"]
+
+            if hist_data.get("price_1h") and not tracking.price_1h:
+                tracking.price_1h = hist_data["price_1h"]
+                if tracking.price_at_alert:
+                    _, tracking.change_1h_percent = calculate_price_change(
+                        tracking.price_at_alert, tracking.price_1h
+                    )
+                tracking.tracked_1h_at = datetime.utcnow()
+                detail["price_1h"] = hist_data["price_1h"]
+
+            if hist_data.get("price_1d") and not tracking.price_1d:
+                tracking.price_1d = hist_data["price_1d"]
+                if tracking.price_at_alert:
+                    _, tracking.change_1d_percent = calculate_price_change(
+                        tracking.price_at_alert, tracking.price_1d
+                    )
+                tracking.tracked_1d_at = datetime.utcnow()
+                detail["price_1d"] = hist_data["price_1d"]
+
+                # Calculate actual impact
+                tracking.actual_impact = price_change_to_impact(
+                    tracking.change_1d_percent,
+                    alert.sentiment or "neutral"
+                )
+
+                # Calculate prediction error
+                if alert.impact_score:
+                    tracking.prediction_error = alert.impact_score - tracking.actual_impact
+
+            # Update status
+            if tracking.price_at_alert and tracking.price_1h and tracking.price_1d:
+                tracking.status = "complete"
+                results["completed"] += 1
+            elif tracking.price_at_alert or tracking.price_1h:
+                tracking.status = "partial"
+
+            results["updated"] += 1
+
+        results["details"].append(detail)
+
+    db.commit()
+
+    return {
+        "message": f"Backfilled {results['updated']} records, {results['completed']} complete, {results['errors']} errors",
+        "results": results
+    }
+
+
+@app.post("/api/backtesting/create-tracking-for-all")
+def create_tracking_for_all_alerts(db: Session = Depends(get_db)):
+    """
+    Create tracking records for ALL existing alerts and immediately
+    backfill with historical price data.
+    """
+    # Get all alerts without tracking
+    tracked_alert_ids = db.query(PriceTracking.alert_id).subquery()
+    untracked_alerts = db.query(Alert).filter(
+        ~Alert.id.in_(tracked_alert_ids)
+    ).all()
+
+    created = 0
+    backfilled = 0
+    errors = 0
+
+    for alert in untracked_alerts:
+        stock = db.query(Stock).filter(Stock.id == alert.stock_id).first()
+        if not stock:
+            continue
+
+        # Get historical prices
+        hist_data = get_historical_prices_for_alert(
+            stock.symbol,
+            alert.created_at
+        )
+
+        # Create tracking record with historical data
+        tracking = PriceTracking(
+            alert_id=alert.id,
+            stock_symbol=stock.symbol,
+            price_at_alert=hist_data.get("price_at_alert"),
+            price_1h=hist_data.get("price_1h"),
+            price_1d=hist_data.get("price_1d"),
+            alert_time=alert.created_at,
+            status="pending"
+        )
+
+        # Calculate changes if we have the data
+        if tracking.price_at_alert and tracking.price_1h:
+            _, tracking.change_1h_percent = calculate_price_change(
+                tracking.price_at_alert, tracking.price_1h
+            )
+            tracking.tracked_1h_at = datetime.utcnow()
+
+        if tracking.price_at_alert and tracking.price_1d:
+            _, tracking.change_1d_percent = calculate_price_change(
+                tracking.price_at_alert, tracking.price_1d
+            )
+            tracking.tracked_1d_at = datetime.utcnow()
+
+            # Calculate actual impact
+            tracking.actual_impact = price_change_to_impact(
+                tracking.change_1d_percent,
+                alert.sentiment or "neutral"
+            )
+
+            # Calculate prediction error
+            if alert.impact_score:
+                tracking.prediction_error = alert.impact_score - tracking.actual_impact
+
+        # Set status
+        if "error" in hist_data:
+            tracking.status = "error"
+            errors += 1
+        elif tracking.price_at_alert and tracking.price_1h and tracking.price_1d:
+            tracking.status = "complete"
+            backfilled += 1
+        elif tracking.price_at_alert or tracking.price_1h:
+            tracking.status = "partial"
+            backfilled += 1
+        else:
+            tracking.status = "error"
+            errors += 1
+
+        db.add(tracking)
+        created += 1
+
+    db.commit()
+
+    return {
+        "message": f"Created {created} tracking records, {backfilled} with historical data, {errors} errors",
+        "created": created,
+        "backfilled": backfilled,
+        "errors": errors
+    }
 
 
 if __name__ == "__main__":
