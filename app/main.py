@@ -232,7 +232,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Stock News Monitor",
     description="Monitor stock news and get alerts for keywords",
-    version="1.5.0",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
