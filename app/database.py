@@ -1,5 +1,5 @@
 import os
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Text, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
@@ -85,6 +85,43 @@ class ClassificationRule(Base):
     is_builtin = Column(Boolean, default=False)  # Built-in rules can't be deleted
     active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PriceTracking(Base):
+    """Track price movements after alerts for backtesting."""
+    __tablename__ = "price_tracking"
+
+    id = Column(Integer, primary_key=True, index=True)
+    alert_id = Column(Integer, ForeignKey("alerts.id"), nullable=False, unique=True)
+    stock_symbol = Column(String(20), nullable=False)
+
+    # Prices at different time points
+    price_at_alert = Column(Float, nullable=True)
+    price_1h = Column(Float, nullable=True)
+    price_1d = Column(Float, nullable=True)
+
+    # Percentage changes
+    change_1h_percent = Column(Float, nullable=True)
+    change_1d_percent = Column(Float, nullable=True)
+
+    # Actual impact based on price movement (1-10 scale)
+    actual_impact = Column(Integer, nullable=True)
+
+    # Comparison: predicted_score - actual_impact
+    # Positive = over-predicted, Negative = under-predicted
+    prediction_error = Column(Integer, nullable=True)
+
+    # Status: pending, partial, complete, error
+    status = Column(String(20), default="pending")
+
+    # Timestamps
+    alert_time = Column(DateTime, nullable=False)
+    tracked_1h_at = Column(DateTime, nullable=True)
+    tracked_1d_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationship
+    alert = relationship("Alert", backref="price_tracking")
 
 
 def get_db():

@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backtesting - Stock News Monitor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .fade-in { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-6 max-w-6xl">
+        <!-- Header -->
+        <header class="bg-white rounded-xl shadow-sm p-4 mb-6">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-800">Backtesting</h1>
+                    <p class="text-gray-500 text-sm">Validate scoring accuracy with price movements</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <a href="/" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+                        Back to Monitor
+                    </a>
+                </div>
+            </div>
+        </header>
+
+        <!-- Stats Overview -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white rounded-xl shadow-sm p-4">
+                <div class="text-2xl font-bold text-blue-600" id="stat-total">0</div>
+                <div class="text-sm text-gray-500">Total Tracked</div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm p-4">
+                <div class="text-2xl font-bold text-green-600" id="stat-complete">0</div>
+                <div class="text-sm text-gray-500">Complete</div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm p-4">
+                <div class="text-2xl font-bold text-purple-600" id="stat-accuracy">-</div>
+                <div class="text-sm text-gray-500">Avg Error</div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm p-4">
+                <div class="flex gap-2">
+                    <span class="text-sm"><span class="text-red-500 font-bold" id="stat-over">0</span> Over</span>
+                    <span class="text-sm"><span class="text-blue-500 font-bold" id="stat-under">0</span> Under</span>
+                    <span class="text-sm"><span class="text-green-500 font-bold" id="stat-accurate">0</span> OK</span>
+                </div>
+                <div class="text-sm text-gray-500">Predictions</div>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
+            <div class="flex flex-wrap gap-3">
+                <button onclick="trackAllUntracked()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+                    Track All Alerts
+                </button>
+                <button onclick="updatePrices()" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+                    Update Prices
+                </button>
+                <button onclick="loadStats()" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+                    Refresh Stats
+                </button>
+            </div>
+        </div>
+
+        <!-- Weight Recommendations -->
+        <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">Weight Adjustment Recommendations</h2>
+            <div id="recommendations-list" class="space-y-2">
+                <p class="text-gray-500 text-center py-4">Loading recommendations...</p>
+            </div>
+        </div>
+
+        <!-- Event Type Stats -->
+        <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">Performance by Event Type</h2>
+            <div id="event-stats" class="overflow-x-auto">
+                <p class="text-gray-500 text-center py-4">No data yet. Track some alerts first.</p>
+            </div>
+        </div>
+
+        <!-- Tracking Records -->
+        <div class="bg-white rounded-xl shadow-sm p-4">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-semibold text-gray-800">Price Tracking Records</h2>
+                <select id="status-filter" onchange="loadTracking()" class="border rounded-lg px-3 py-2 text-sm">
+                    <option value="">All Status</option>
+                    <option value="pending">Pending</option>
+                    <option value="partial">Partial</option>
+                    <option value="complete">Complete</option>
+                    <option value="error">Error</option>
+                </select>
+            </div>
+            <div id="tracking-list" class="space-y-3">
+                <p class="text-gray-500 text-center py-4">Loading tracking records...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+
+        // Load everything on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadStats();
+            loadTracking();
+            loadRecommendations();
+        });
+
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_BASE}/backtesting/stats`);
+                const stats = await response.json();
+
+                document.getElementById('stat-total').textContent = stats.total_tracked;
+                document.getElementById('stat-complete').textContent = stats.complete_tracking;
+                document.getElementById('stat-accuracy').textContent =
+                    stats.avg_prediction_error !== null ? `${stats.avg_prediction_error > 0 ? '+' : ''}${stats.avg_prediction_error}` : '-';
+                document.getElementById('stat-over').textContent = stats.over_predictions;
+                document.getElementById('stat-under').textContent = stats.under_predictions;
+                document.getElementById('stat-accurate').textContent = stats.accurate_predictions;
+
+                // Update event stats table
+                if (Object.keys(stats.event_type_stats).length > 0) {
+                    const eventStats = document.getElementById('event-stats');
+                    eventStats.innerHTML = `
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="border-b">
+                                    <th class="text-left py-2">Event Type</th>
+                                    <th class="text-center py-2">Count</th>
+                                    <th class="text-center py-2">Avg Error</th>
+                                    <th class="text-center py-2">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${Object.entries(stats.event_type_stats).map(([type, data]) => `
+                                    <tr class="border-b">
+                                        <td class="py-2">${formatEventType(type)}</td>
+                                        <td class="text-center">${data.count}</td>
+                                        <td class="text-center ${getErrorClass(data.avg_error)}">${data.avg_error > 0 ? '+' : ''}${data.avg_error}</td>
+                                        <td class="text-center">${getErrorBadge(data.avg_error)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+
+        async function loadTracking() {
+            try {
+                const status = document.getElementById('status-filter').value;
+                const url = status
+                    ? `${API_BASE}/backtesting/tracking?status=${status}`
+                    : `${API_BASE}/backtesting/tracking`;
+
+                const response = await fetch(url);
+                const records = await response.json();
+
+                const list = document.getElementById('tracking-list');
+                if (records.length === 0) {
+                    list.innerHTML = '<p class="text-gray-500 text-center py-4">No tracking records found.</p>';
+                    return;
+                }
+
+                list.innerHTML = records.map(record => `
+                    <div class="p-3 rounded-lg bg-gray-50 fade-in">
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="flex items-center gap-2">
+                                <span class="font-semibold text-blue-600">${record.stock_symbol}</span>
+                                ${getStatusBadge(record.status)}
+                            </div>
+                            <span class="text-xs text-gray-500">${formatDate(record.alert_time)}</span>
+                        </div>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                            <div>
+                                <span class="text-gray-500">At Alert:</span>
+                                <span class="font-medium">${record.price_at_alert ? '$' + record.price_at_alert.toFixed(2) : '-'}</span>
+                            </div>
+                            <div>
+                                <span class="text-gray-500">+1h:</span>
+                                <span class="font-medium ${getChangeClass(record.change_1h_percent)}">
+                                    ${record.price_1h ? '$' + record.price_1h.toFixed(2) : '-'}
+                                    ${record.change_1h_percent !== null ? `(${record.change_1h_percent > 0 ? '+' : ''}${record.change_1h_percent.toFixed(2)}%)` : ''}
+                                </span>
+                            </div>
+                            <div>
+                                <span class="text-gray-500">+1d:</span>
+                                <span class="font-medium ${getChangeClass(record.change_1d_percent)}">
+                                    ${record.price_1d ? '$' + record.price_1d.toFixed(2) : '-'}
+                                    ${record.change_1d_percent !== null ? `(${record.change_1d_percent > 0 ? '+' : ''}${record.change_1d_percent.toFixed(2)}%)` : ''}
+                                </span>
+                            </div>
+                            <div>
+                                <span class="text-gray-500">Actual Impact:</span>
+                                <span class="font-medium">${record.actual_impact || '-'}</span>
+                                ${record.prediction_error !== null ? `
+                                    <span class="${record.prediction_error > 0 ? 'text-red-500' : record.prediction_error < 0 ? 'text-blue-500' : 'text-green-500'}">
+                                        (${record.prediction_error > 0 ? '+' : ''}${record.prediction_error} error)
+                                    </span>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading tracking:', error);
+            }
+        }
+
+        async function loadRecommendations() {
+            try {
+                const response = await fetch(`${API_BASE}/backtesting/recommendations`);
+                const recommendations = await response.json();
+
+                const list = document.getElementById('recommendations-list');
+                if (recommendations.length === 0) {
+                    list.innerHTML = '<p class="text-gray-500 text-center py-4">No recommendations yet. Need more data.</p>';
+                    return;
+                }
+
+                list.innerHTML = recommendations.map(rec => `
+                    <div class="flex items-center justify-between p-3 rounded-lg ${getRecBackground(rec.adjustment)} fade-in">
+                        <div>
+                            <span class="font-medium">${formatEventType(rec.event_type)}</span>
+                            <span class="text-sm text-gray-600 ml-2">(${rec.sample_count} samples)</span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="text-sm ${getErrorClass(rec.avg_error)}">
+                                Avg Error: ${rec.avg_error > 0 ? '+' : ''}${rec.avg_error}
+                            </span>
+                            ${getRecBadge(rec)}
+                            <span class="text-xs px-2 py-1 rounded ${rec.confidence === 'high' ? 'bg-green-100 text-green-800' : rec.confidence === 'medium' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'}">
+                                ${rec.confidence} confidence
+                            </span>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading recommendations:', error);
+            }
+        }
+
+        async function trackAllUntracked() {
+            try {
+                const response = await fetch(`${API_BASE}/backtesting/track-all-untracked`, { method: 'POST' });
+                const result = await response.json();
+                alert(result.message);
+                loadStats();
+                loadTracking();
+            } catch (error) {
+                console.error('Error tracking alerts:', error);
+                alert('Error tracking alerts');
+            }
+        }
+
+        async function updatePrices() {
+            try {
+                const response = await fetch(`${API_BASE}/backtesting/update-prices`, { method: 'POST' });
+                const result = await response.json();
+                alert(result.message);
+                loadStats();
+                loadTracking();
+                loadRecommendations();
+            } catch (error) {
+                console.error('Error updating prices:', error);
+                alert('Error updating prices');
+            }
+        }
+
+        function getStatusBadge(status) {
+            const colors = {
+                'pending': 'bg-yellow-200 text-yellow-800',
+                'partial': 'bg-blue-200 text-blue-800',
+                'complete': 'bg-green-200 text-green-800',
+                'error': 'bg-red-200 text-red-800'
+            };
+            return `<span class="text-xs px-2 py-0.5 rounded ${colors[status] || 'bg-gray-200'}">${status}</span>`;
+        }
+
+        function getChangeClass(change) {
+            if (change === null) return '';
+            return change > 0 ? 'text-green-600' : change < 0 ? 'text-red-600' : '';
+        }
+
+        function getErrorClass(error) {
+            if (error > 1.5) return 'text-red-600';
+            if (error < -1.5) return 'text-blue-600';
+            return 'text-green-600';
+        }
+
+        function getErrorBadge(error) {
+            if (error > 1.5) return '<span class="text-xs px-2 py-0.5 rounded bg-red-100 text-red-800">Over-predicting</span>';
+            if (error < -1.5) return '<span class="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-800">Under-predicting</span>';
+            return '<span class="text-xs px-2 py-0.5 rounded bg-green-100 text-green-800">Accurate</span>';
+        }
+
+        function getRecBackground(adjustment) {
+            if (adjustment > 0) return 'bg-blue-50';
+            if (adjustment < 0) return 'bg-red-50';
+            return 'bg-green-50';
+        }
+
+        function getRecBadge(rec) {
+            if (rec.adjustment > 0) {
+                return '<span class="text-sm px-2 py-1 rounded bg-blue-500 text-white">Increase Weight</span>';
+            } else if (rec.adjustment < 0) {
+                return '<span class="text-sm px-2 py-1 rounded bg-red-500 text-white">Reduce Weight</span>';
+            }
+            return '<span class="text-sm px-2 py-1 rounded bg-green-500 text-white">Keep Weight</span>';
+        }
+
+        function formatEventType(eventType) {
+            const labels = {
+                'EARNINGS_BEAT': 'Earnings Beat',
+                'EARNINGS_MISS': 'Earnings Miss',
+                'GUIDANCE_RAISE': 'Guidance Raised',
+                'GUIDANCE_CUT': 'Guidance Cut',
+                'ACQUISITION': 'Acquisition',
+                'CEO_CHANGE': 'CEO Change',
+                'CFO_CHANGE': 'CFO Change',
+                'LAYOFFS': 'Layoffs',
+                'FDA_APPROVAL': 'FDA Approval',
+                'FDA_REJECTION': 'FDA Rejection',
+                'SEC_INVESTIGATION': 'SEC Investigation',
+                'LAWSUIT': 'Lawsuit',
+                'STOCK_BUYBACK': 'Buyback',
+                'DIVIDEND': 'Dividend',
+                'STOCK_SPLIT': 'Stock Split',
+                'UPGRADE': 'Upgrade',
+                'DOWNGRADE': 'Downgrade',
+                'PRODUCT_LAUNCH': 'Product Launch',
+                'PARTNERSHIP': 'Partnership',
+                'BANKRUPTCY': 'Bankruptcy',
+                'IPO': 'IPO',
+                'INSIDER_BUYING': 'Insider Buy',
+                'INSIDER_SELLING': 'Insider Sell',
+                'INVESTMENT': 'Investment',
+                'UNKNOWN': 'Unknown'
+            };
+            return labels[eventType] || eventType;
+        }
+
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleString();
+        }
+    </script>
+</body>
+</html>

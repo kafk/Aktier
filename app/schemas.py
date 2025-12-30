@@ -118,3 +118,50 @@ class ClassificationRuleResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class PriceTrackingResponse(BaseModel):
+    id: int
+    alert_id: int
+    stock_symbol: str
+    price_at_alert: Optional[float]
+    price_1h: Optional[float]
+    price_1d: Optional[float]
+    change_1h_percent: Optional[float]
+    change_1d_percent: Optional[float]
+    actual_impact: Optional[int]
+    prediction_error: Optional[int]
+    status: str
+    alert_time: datetime
+    tracked_1h_at: Optional[datetime]
+    tracked_1d_at: Optional[datetime]
+
+    class Config:
+        from_attributes = True
+
+
+class PriceTrackingWithAlert(PriceTrackingResponse):
+    """Price tracking with full alert details."""
+    alert: Optional[AlertResponse]
+
+
+class BacktestStats(BaseModel):
+    """Statistics for backtesting analysis."""
+    total_tracked: int
+    complete_tracking: int
+    avg_prediction_error: Optional[float]
+    over_predictions: int
+    under_predictions: int
+    accurate_predictions: int
+    event_type_stats: dict
+
+
+class WeightRecommendation(BaseModel):
+    """Recommendation for adjusting event weights."""
+    event_type: str
+    recommendation: str
+    confidence: str
+    adjustment: int
+    reason: str
+    sample_count: int
+    avg_error: float

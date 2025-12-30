@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from .database import get_db, init_db, seed_classification_rules, Stock, Keyword, NewsArticle, Alert, Note, ClassificationRule
+from .database import get_db, init_db, seed_classification_rules, Stock, Keyword, NewsArticle, Alert, Note, ClassificationRule, PriceTracking
 from .schemas import (
     StockCreate,
     StockResponse,
@@ -26,10 +26,20 @@ from .schemas import (
     NoteResponse,
     ClassificationRuleCreate,
     ClassificationRuleResponse,
+    PriceTrackingResponse,
+    BacktestStats,
+    WeightRecommendation,
 )
 from .scraper import scrape_all_sources, check_keywords, get_news_cutoff_date
 from .scorer import calculate_impact_score, score_breakdown_to_json
 from .classifier import classify_event
+from .price_tracker import (
+    get_current_price,
+    get_price_at_time,
+    calculate_price_change,
+    price_change_to_impact,
+    get_weight_adjustment_recommendation,
+)
 
 import logging
 import os
@@ -640,6 +650,306 @@ def toggle_classification_rule(rule_id: int, db: Session = Depends(get_db)):
     rule.active = not rule.active
     db.commit()
     return {"active": rule.active}
+
+
+# ============ Backtesting Endpoints ============
+
+@app.get("/backtesting")
+async def backtesting_page():
+    """Serve the backtesting page."""
+    return FileResponse(os.path.join(static_path, "backtesting.html"))
+
+
+@app.get("/api/backtesting/tracking", response_model=list[PriceTrackingResponse])
+def get_price_tracking(
+    limit: int = Query(default=50, le=200),
+    status: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Get all price tracking records."""
+    query = db.query(PriceTracking).order_by(PriceTracking.alert_time.desc())
+
+    if status:
+        query = query.filter(PriceTracking.status == status)
+
+    return query.limit(limit).all()
+
+
+@app.post("/api/backtesting/track/{alert_id}")
+def start_tracking_alert(alert_id: int, db: Session = Depends(get_db)):
+    """Start price tracking for a specific alert."""
+    # Check if alert exists
+    alert = db.query(Alert).filter(Alert.id == alert_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    # Check if already tracking
+    existing = db.query(PriceTracking).filter(PriceTracking.alert_id == alert_id).first()
+    if existing:
+        return {"message": "Already tracking", "tracking": existing}
+
+    # Get current price
+    stock = db.query(Stock).filter(Stock.id == alert.stock_id).first()
+    if not stock:
+        raise HTTPException(status_code=404, detail="Stock not found")
+
+    current_price = get_current_price(stock.symbol)
+
+    # Create tracking record
+    tracking = PriceTracking(
+        alert_id=alert_id,
+        stock_symbol=stock.symbol,
+        price_at_alert=current_price,
+        alert_time=alert.created_at,
+        status="pending" if current_price else "error"
+    )
+    db.add(tracking)
+    db.commit()
+    db.refresh(tracking)
+
+    return {"message": "Tracking started", "tracking": tracking}
+
+
+@app.post("/api/backtesting/track-all-untracked")
+def track_all_untracked_alerts(db: Session = Depends(get_db)):
+    """Start tracking for all alerts that don't have tracking yet."""
+    # Get alerts without tracking
+    tracked_alert_ids = db.query(PriceTracking.alert_id).subquery()
+    untracked_alerts = db.query(Alert).filter(
+        ~Alert.id.in_(tracked_alert_ids)
+    ).all()
+
+    tracked_count = 0
+    for alert in untracked_alerts:
+        stock = db.query(Stock).filter(Stock.id == alert.stock_id).first()
+        if not stock:
+            continue
+
+        current_price = get_current_price(stock.symbol)
+
+        tracking = PriceTracking(
+            alert_id=alert.id,
+            stock_symbol=stock.symbol,
+            price_at_alert=current_price,
+            alert_time=alert.created_at,
+            status="pending" if current_price else "error"
+        )
+        db.add(tracking)
+        tracked_count += 1
+
+    db.commit()
+    return {"message": f"Started tracking {tracked_count} alerts"}
+
+
+@app.post("/api/backtesting/update-prices")
+def update_tracked_prices(db: Session = Depends(get_db)):
+    """Update prices for all pending/partial tracking records."""
+    from datetime import timedelta
+
+    now = datetime.utcnow()
+    updated_count = 0
+
+    # Get all tracking records that need updates
+    tracking_records = db.query(PriceTracking).filter(
+        PriceTracking.status.in_(["pending", "partial"])
+    ).all()
+
+    for tracking in tracking_records:
+        alert = db.query(Alert).filter(Alert.id == tracking.alert_id).first()
+        if not alert:
+            continue
+
+        alert_time = tracking.alert_time
+        time_since_alert = now - alert_time
+
+        # Update 1h price if enough time has passed and not yet recorded
+        if time_since_alert >= timedelta(hours=1) and tracking.price_1h is None:
+            price_1h = get_current_price(tracking.stock_symbol)
+            if price_1h and tracking.price_at_alert:
+                tracking.price_1h = price_1h
+                _, tracking.change_1h_percent = calculate_price_change(
+                    tracking.price_at_alert, price_1h
+                )
+                tracking.tracked_1h_at = now
+                tracking.status = "partial"
+                updated_count += 1
+
+        # Update 1d price if enough time has passed and not yet recorded
+        if time_since_alert >= timedelta(days=1) and tracking.price_1d is None:
+            price_1d = get_current_price(tracking.stock_symbol)
+            if price_1d and tracking.price_at_alert:
+                tracking.price_1d = price_1d
+                _, tracking.change_1d_percent = calculate_price_change(
+                    tracking.price_at_alert, price_1d
+                )
+                tracking.tracked_1d_at = now
+
+                # Calculate actual impact based on 1d change
+                tracking.actual_impact = price_change_to_impact(
+                    tracking.change_1d_percent,
+                    alert.sentiment or "neutral"
+                )
+
+                # Calculate prediction error
+                if alert.impact_score:
+                    tracking.prediction_error = alert.impact_score - tracking.actual_impact
+
+                tracking.status = "complete"
+                updated_count += 1
+
+    db.commit()
+    return {"message": f"Updated {updated_count} tracking records"}
+
+
+@app.get("/api/backtesting/stats")
+def get_backtest_stats(db: Session = Depends(get_db)):
+    """Get backtesting statistics."""
+    from sqlalchemy import func
+
+    # Total tracked
+    total_tracked = db.query(PriceTracking).count()
+
+    # Complete tracking
+    complete = db.query(PriceTracking).filter(
+        PriceTracking.status == "complete"
+    ).all()
+    complete_count = len(complete)
+
+    # Calculate averages and counts
+    over_predictions = 0
+    under_predictions = 0
+    accurate = 0
+    total_error = 0
+    event_stats = {}
+
+    for tracking in complete:
+        alert = db.query(Alert).filter(Alert.id == tracking.alert_id).first()
+        if not alert or tracking.prediction_error is None:
+            continue
+
+        error = tracking.prediction_error
+        total_error += error
+
+        if error > 1:
+            over_predictions += 1
+        elif error < -1:
+            under_predictions += 1
+        else:
+            accurate += 1
+
+        # Group by event type
+        event_type = alert.event_type or "UNKNOWN"
+        if event_type not in event_stats:
+            event_stats[event_type] = {"count": 0, "total_error": 0, "errors": []}
+        event_stats[event_type]["count"] += 1
+        event_stats[event_type]["total_error"] += error
+        event_stats[event_type]["errors"].append(error)
+
+    # Calculate averages per event type
+    for event_type, stats in event_stats.items():
+        if stats["count"] > 0:
+            stats["avg_error"] = round(stats["total_error"] / stats["count"], 2)
+        else:
+            stats["avg_error"] = 0
+        del stats["errors"]  # Remove raw data
+
+    avg_error = round(total_error / complete_count, 2) if complete_count > 0 else None
+
+    return {
+        "total_tracked": total_tracked,
+        "complete_tracking": complete_count,
+        "avg_prediction_error": avg_error,
+        "over_predictions": over_predictions,
+        "under_predictions": under_predictions,
+        "accurate_predictions": accurate,
+        "event_type_stats": event_stats
+    }
+
+
+@app.get("/api/backtesting/recommendations", response_model=list[WeightRecommendation])
+def get_weight_recommendations(db: Session = Depends(get_db)):
+    """Get recommendations for adjusting event weights based on backtest data."""
+    # Get complete tracking with alerts
+    complete = db.query(PriceTracking).filter(
+        PriceTracking.status == "complete"
+    ).all()
+
+    # Group by event type
+    event_errors = {}
+    for tracking in complete:
+        alert = db.query(Alert).filter(Alert.id == tracking.alert_id).first()
+        if not alert or tracking.prediction_error is None:
+            continue
+
+        event_type = alert.event_type or "UNKNOWN"
+        if event_type not in event_errors:
+            event_errors[event_type] = []
+        event_errors[event_type].append(tracking.prediction_error)
+
+    # Generate recommendations
+    recommendations = []
+    for event_type, errors in event_errors.items():
+        avg_error = sum(errors) / len(errors) if errors else 0
+        rec = get_weight_adjustment_recommendation(event_type, avg_error, len(errors))
+        rec["sample_count"] = len(errors)
+        rec["avg_error"] = round(avg_error, 2)
+        recommendations.append(rec)
+
+    # Sort by confidence and magnitude of recommendation
+    recommendations.sort(key=lambda x: (
+        x["confidence"] != "high",
+        x["adjustment"] == 0,
+        abs(x["avg_error"])
+    ))
+
+    return recommendations
+
+
+@app.post("/api/backtesting/manual-entry/{tracking_id}")
+def manual_price_entry(
+    tracking_id: int,
+    price_1h: Optional[float] = None,
+    price_1d: Optional[float] = None,
+    db: Session = Depends(get_db)
+):
+    """Manually enter price data for a tracking record."""
+    tracking = db.query(PriceTracking).filter(PriceTracking.id == tracking_id).first()
+    if not tracking:
+        raise HTTPException(status_code=404, detail="Tracking record not found")
+
+    alert = db.query(Alert).filter(Alert.id == tracking.alert_id).first()
+
+    if price_1h is not None and tracking.price_at_alert:
+        tracking.price_1h = price_1h
+        _, tracking.change_1h_percent = calculate_price_change(
+            tracking.price_at_alert, price_1h
+        )
+        tracking.tracked_1h_at = datetime.utcnow()
+        if tracking.status == "pending":
+            tracking.status = "partial"
+
+    if price_1d is not None and tracking.price_at_alert:
+        tracking.price_1d = price_1d
+        _, tracking.change_1d_percent = calculate_price_change(
+            tracking.price_at_alert, price_1d
+        )
+        tracking.tracked_1d_at = datetime.utcnow()
+
+        # Calculate actual impact
+        tracking.actual_impact = price_change_to_impact(
+            tracking.change_1d_percent,
+            alert.sentiment if alert else "neutral"
+        )
+
+        # Calculate prediction error
+        if alert and alert.impact_score:
+            tracking.prediction_error = alert.impact_score - tracking.actual_impact
+
+        tracking.status = "complete"
+
+    db.commit()
+    db.refresh(tracking)
+    return tracking
 
 
 if __name__ == "__main__":
