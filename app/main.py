@@ -219,6 +219,12 @@ async def root():
     return FileResponse(os.path.join(static_path, "index.html"))
 
 
+@app.get("/classifications")
+async def classifications_page():
+    """Serve the classifications management page."""
+    return FileResponse(os.path.join(static_path, "classifications.html"))
+
+
 # ============== Stock Endpoints ==============
 
 
