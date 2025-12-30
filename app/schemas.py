@@ -55,6 +55,7 @@ class AlertResponse(BaseModel):
     event_type: Optional[str]
     sentiment: Optional[str]
     is_read: bool
+    is_notified: bool
     created_at: datetime
     stock: Optional[StockResponse]
     article: Optional[NewsArticleResponse]

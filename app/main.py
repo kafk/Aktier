@@ -194,7 +194,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Stock News Monitor",
     description="Monitor stock news and get alerts for keywords",
-    version="1.3.0",
+    version="1.4.0",
     lifespan=lifespan,
 )
 
@@ -418,6 +418,32 @@ def mark_all_alerts_read(db: Session = Depends(get_db)):
     db.query(Alert).filter(Alert.is_read == False).update({"is_read": True})
     db.commit()
     return {"message": "All alerts marked as read"}
+
+
+@app.get("/api/alerts/unnotified", response_model=list[AlertResponse])
+def get_unnotified_alerts(db: Session = Depends(get_db)):
+    """Get alerts that haven't been sent as notifications yet."""
+    return db.query(Alert).filter(Alert.is_notified == False).order_by(Alert.created_at.desc()).all()
+
+
+@app.put("/api/alerts/{alert_id}/notified")
+def mark_alert_notified(alert_id: int, db: Session = Depends(get_db)):
+    """Mark an alert as notified (notification was sent)."""
+    alert = db.query(Alert).filter(Alert.id == alert_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    alert.is_notified = True
+    db.commit()
+    return {"is_notified": alert.is_notified}
+
+
+@app.put("/api/alerts/notified-all")
+def mark_all_alerts_notified(db: Session = Depends(get_db)):
+    """Mark all unnotified alerts as notified."""
+    count = db.query(Alert).filter(Alert.is_notified == False).update({"is_notified": True})
+    db.commit()
+    return {"message": f"Marked {count} alerts as notified"}
 
 
 # ============== Status Endpoints ==============

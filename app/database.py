@@ -57,6 +57,7 @@ class Alert(Base):
     event_type = Column(String(50), nullable=True)  # e.g., EARNINGS_BEAT, GUIDANCE_CUT
     sentiment = Column(String(20), nullable=True)   # positive, negative, neutral
     is_read = Column(Boolean, default=False)
+    is_notified = Column(Boolean, default=False)    # Track if notification was sent
     created_at = Column(DateTime, default=datetime.utcnow)
 
     stock = relationship("Stock", back_populates="alerts")
