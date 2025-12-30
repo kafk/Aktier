@@ -139,7 +139,7 @@ async def scrape_news_job(force: bool = False):
                 logger.error(f"Error scraping {stock.symbol}: {e}")
                 db.rollback()
 
-        last_scrape_time = datetime.utcnow()
+        last_scrape_time = datetime.now(SWEDISH_TZ)
         logger.info("Scraping job completed")
 
     except Exception as e:
