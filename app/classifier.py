@@ -4,10 +4,10 @@ Classifies news headlines into event types and sentiment.
 """
 
 import re
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List, Dict
 
 
-# Event type definitions
+# Event type definitions (display names for built-in rules)
 EVENT_TYPES = {
     "EARNINGS_BEAT": "Earnings Beat",
     "EARNINGS_MISS": "Earnings Miss",
@@ -32,21 +32,32 @@ EVENT_TYPES = {
     "IPO": "IPO",
     "INSIDER_BUYING": "Insider Buying",
     "INSIDER_SELLING": "Insider Selling",
+    "INVESTMENT": "Investment",
 }
 
 
-def classify_event(title: str, summary: str = "") -> Tuple[Optional[str], Optional[str]]:
+def classify_event(title: str, summary: str = "", custom_rules: List[Dict] = None) -> Tuple[Optional[str], Optional[str]]:
     """
     Classify a news headline into an event type and sentiment.
 
     Args:
         title: The news headline
         summary: Optional article summary
+        custom_rules: List of custom rules from database
 
     Returns:
         Tuple of (event_type, sentiment) or (None, None) if no match
     """
     text = f"{title} {summary}".lower()
+
+    # Check custom rules from database first
+    if custom_rules:
+        for rule in custom_rules:
+            if not rule.get("active", True):
+                continue
+            keywords = [kw.strip() for kw in rule.get("keywords", "").split(",")]
+            if any(kw in text for kw in keywords if kw):
+                return rule.get("event_type"), rule.get("sentiment", "neutral")
 
     # Earnings
     if _matches(text, ["beats", "topped", "exceeds", "surpass"]) and _matches(text, ["earnings", "eps", "profit", "estimates", "expectations"]):

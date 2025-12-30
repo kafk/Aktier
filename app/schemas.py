@@ -95,3 +95,24 @@ class NoteResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ClassificationRuleCreate(BaseModel):
+    event_type: str
+    display_name: str
+    keywords: str  # Comma-separated
+    sentiment: str = "neutral"
+
+
+class ClassificationRuleResponse(BaseModel):
+    id: int
+    event_type: str
+    display_name: str
+    keywords: str
+    sentiment: str
+    is_builtin: bool
+    active: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

@@ -72,6 +72,19 @@ class Note(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class ClassificationRule(Base):
+    __tablename__ = "classification_rules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_type = Column(String(50), unique=True, nullable=False)  # e.g., INVESTMENT
+    display_name = Column(String(100), nullable=False)  # e.g., "Investment"
+    keywords = Column(Text, nullable=False)  # Comma-separated: "invests,investment,invested"
+    sentiment = Column(String(20), nullable=False, default="neutral")  # positive, negative, neutral
+    is_builtin = Column(Boolean, default=False)  # Built-in rules can't be deleted
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 def get_db():
     db = SessionLocal()
     try:

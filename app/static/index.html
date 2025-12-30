@@ -43,7 +43,7 @@
                     <h1 class="text-3xl font-bold text-gray-800 mb-2">Stock News Monitor</h1>
                     <p class="text-gray-600">Monitor stock news and get alerts for keywords</p>
                 </div>
-                <span class="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">v1.4.0</span>
+                <span class="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">v1.5.0</span>
             </div>
         </header>
 
@@ -178,6 +178,45 @@
                         <p class="text-gray-500 text-center py-4">No news articles yet.</p>
                     </div>
                 </div>
+
+                <!-- Classifications Section -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold text-gray-800">Event Classifications</h2>
+                        <button onclick="toggleClassificationsForm()" class="text-sm text-purple-500 hover:text-purple-700">
+                            + Add Rule
+                        </button>
+                    </div>
+
+                    <!-- Add Classification Form (hidden by default) -->
+                    <div id="classification-form" class="hidden mb-4 p-4 bg-gray-50 rounded-lg">
+                        <div class="grid grid-cols-2 gap-3 mb-3">
+                            <input type="text" id="class-event-type" placeholder="Event type (e.g., INVESTMENT)"
+                                class="border border-gray-300 rounded px-3 py-2 text-sm">
+                            <input type="text" id="class-display-name" placeholder="Display name (e.g., Investment)"
+                                class="border border-gray-300 rounded px-3 py-2 text-sm">
+                        </div>
+                        <input type="text" id="class-keywords" placeholder="Keywords (comma-separated: invests,investment,invested)"
+                            class="w-full border border-gray-300 rounded px-3 py-2 text-sm mb-3">
+                        <div class="flex gap-3">
+                            <select id="class-sentiment" class="border border-gray-300 rounded px-3 py-2 text-sm">
+                                <option value="neutral">Neutral</option>
+                                <option value="positive">Positive</option>
+                                <option value="negative">Negative</option>
+                            </select>
+                            <button onclick="addClassification()" class="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded text-sm">
+                                Add
+                            </button>
+                            <button onclick="toggleClassificationsForm()" class="text-gray-500 hover:text-gray-700 px-4 py-2 text-sm">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="classifications-list" class="space-y-2 max-h-64 overflow-y-auto">
+                        <!-- Classifications will be loaded here -->
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -194,6 +233,7 @@
             loadAlerts();
             loadNews();
             loadNotes();
+            loadClassifications();
 
             // Auto-refresh every 30 seconds
             setInterval(() => {
@@ -641,6 +681,108 @@
             }
         }
 
+        // Classifications
+        async function loadClassifications() {
+            try {
+                const response = await fetch(`${API_BASE}/classifications`);
+                const rules = await response.json();
+
+                const list = document.getElementById('classifications-list');
+
+                if (rules.length === 0) {
+                    list.innerHTML = '<p class="text-gray-500 text-sm text-center py-2">No custom rules yet. Add one above.</p>';
+                    return;
+                }
+
+                list.innerHTML = rules.map(rule => `
+                    <div class="flex items-center justify-between p-2 rounded ${rule.active ? 'bg-purple-50' : 'bg-gray-100'}">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs px-2 py-0.5 rounded ${getSentimentClass(rule.sentiment)}">${rule.display_name}</span>
+                            <span class="text-xs text-gray-500">${rule.keywords.split(',').slice(0, 3).join(', ')}${rule.keywords.split(',').length > 3 ? '...' : ''}</span>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="toggleClassification(${rule.id})" class="text-xs ${rule.active ? 'text-yellow-600' : 'text-green-600'}">
+                                ${rule.active ? 'Disable' : 'Enable'}
+                            </button>
+                            ${!rule.is_builtin ? `
+                                <button onclick="deleteClassification(${rule.id})" class="text-xs text-red-500 hover:text-red-700">
+                                    Delete
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading classifications:', error);
+            }
+        }
+
+        function toggleClassificationsForm() {
+            const form = document.getElementById('classification-form');
+            form.classList.toggle('hidden');
+        }
+
+        async function addClassification() {
+            const eventType = document.getElementById('class-event-type').value.trim();
+            const displayName = document.getElementById('class-display-name').value.trim();
+            const keywords = document.getElementById('class-keywords').value.trim();
+            const sentiment = document.getElementById('class-sentiment').value;
+
+            if (!eventType || !displayName || !keywords) {
+                alert('Please fill in all fields');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/classifications`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        event_type: eventType,
+                        display_name: displayName,
+                        keywords: keywords,
+                        sentiment: sentiment
+                    })
+                });
+
+                if (response.ok) {
+                    // Clear form
+                    document.getElementById('class-event-type').value = '';
+                    document.getElementById('class-display-name').value = '';
+                    document.getElementById('class-keywords').value = '';
+                    document.getElementById('class-sentiment').value = 'neutral';
+                    toggleClassificationsForm();
+                    loadClassifications();
+                } else {
+                    const error = await response.json();
+                    alert(error.detail || 'Failed to add classification');
+                }
+            } catch (error) {
+                console.error('Error adding classification:', error);
+                alert('Failed to add classification');
+            }
+        }
+
+        async function toggleClassification(id) {
+            try {
+                await fetch(`${API_BASE}/classifications/${id}/toggle`, { method: 'PUT' });
+                loadClassifications();
+            } catch (error) {
+                console.error('Error toggling classification:', error);
+            }
+        }
+
+        async function deleteClassification(id) {
+            if (!confirm('Delete this classification rule?')) return;
+
+            try {
+                await fetch(`${API_BASE}/classifications/${id}`, { method: 'DELETE' });
+                loadClassifications();
+            } catch (error) {
+                console.error('Error deleting classification:', error);
+            }
+        }
+
         // Helpers
         function formatDate(dateStr) {
             if (!dateStr) return 'Unknown';
@@ -687,7 +829,8 @@
                 'BANKRUPTCY': 'Bankruptcy',
                 'IPO': 'IPO',
                 'INSIDER_BUYING': 'Insider Buy',
-                'INSIDER_SELLING': 'Insider Sell'
+                'INSIDER_SELLING': 'Insider Sell',
+                'INVESTMENT': 'Investment'
             };
             return labels[eventType] || eventType;
         }

@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from .database import get_db, init_db, Stock, Keyword, NewsArticle, Alert, Note
+from .database import get_db, init_db, Stock, Keyword, NewsArticle, Alert, Note, ClassificationRule
 from .schemas import (
     StockCreate,
     StockResponse,
@@ -24,6 +24,8 @@ from .schemas import (
     ScrapeIntervalUpdate,
     NoteUpdate,
     NoteResponse,
+    ClassificationRuleCreate,
+    ClassificationRuleResponse,
 )
 from .scraper import scrape_all_sources, check_keywords, get_news_cutoff_date
 from .classifier import classify_event
@@ -100,6 +102,13 @@ async def scrape_news_job(force: bool = False):
         keywords = db.query(Keyword).filter(Keyword.active == True).all()
         keyword_list = [k.word for k in keywords]
 
+        # Get custom classification rules
+        custom_rules = db.query(ClassificationRule).filter(ClassificationRule.active == True).all()
+        custom_rules_list = [
+            {"event_type": r.event_type, "keywords": r.keywords, "sentiment": r.sentiment, "active": r.active}
+            for r in custom_rules
+        ]
+
         logger.info(f"Scraping news for {len(stocks)} stocks with {len(keyword_list)} keywords")
 
         for stock in stocks:
@@ -132,7 +141,8 @@ async def scrape_news_job(force: bool = False):
                         # Classify the event
                         event_type, sentiment = classify_event(
                             article_data.title,
-                            article_data.summary or ""
+                            article_data.summary or "",
+                            custom_rules_list
                         )
 
                         alert = Alert(
@@ -194,7 +204,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Stock News Monitor",
     description="Monitor stock news and get alerts for keywords",
-    version="1.4.0",
+    version="1.5.0",
     lifespan=lifespan,
 )
 
@@ -312,6 +322,13 @@ def scan_existing_articles_for_keyword(db: Session, keyword: str):
     # Get all stocks (to link alerts)
     stocks = {s.symbol: s for s in db.query(Stock).all()}
 
+    # Get custom classification rules
+    custom_rules = db.query(ClassificationRule).filter(ClassificationRule.active == True).all()
+    custom_rules_list = [
+        {"event_type": r.event_type, "keywords": r.keywords, "sentiment": r.sentiment, "active": r.active}
+        for r in custom_rules
+    ]
+
     alerts_created = 0
     for article in articles:
         text_to_check = f"{article.title} {article.summary or ''}"
@@ -332,7 +349,8 @@ def scan_existing_articles_for_keyword(db: Session, keyword: str):
                     # Classify the event
                     event_type, sentiment = classify_event(
                         article.title,
-                        article.summary or ""
+                        article.summary or "",
+                        custom_rules_list
                     )
 
                     # Create new alert
@@ -530,6 +548,64 @@ def update_notes(body: NoteUpdate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(note)
     return note
+
+
+# ============== Classification Rules Endpoints ==============
+
+
+@app.get("/api/classifications", response_model=list[ClassificationRuleResponse])
+def get_classification_rules(db: Session = Depends(get_db)):
+    """Get all classification rules."""
+    return db.query(ClassificationRule).order_by(ClassificationRule.display_name).all()
+
+
+@app.post("/api/classifications", response_model=ClassificationRuleResponse)
+def create_classification_rule(rule: ClassificationRuleCreate, db: Session = Depends(get_db)):
+    """Create a new classification rule."""
+    # Check if event_type already exists
+    existing = db.query(ClassificationRule).filter(
+        ClassificationRule.event_type == rule.event_type.upper()
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Event type already exists")
+
+    db_rule = ClassificationRule(
+        event_type=rule.event_type.upper().replace(" ", "_"),
+        display_name=rule.display_name,
+        keywords=rule.keywords.lower(),
+        sentiment=rule.sentiment,
+        is_builtin=False,
+    )
+    db.add(db_rule)
+    db.commit()
+    db.refresh(db_rule)
+    return db_rule
+
+
+@app.delete("/api/classifications/{rule_id}")
+def delete_classification_rule(rule_id: int, db: Session = Depends(get_db)):
+    """Delete a classification rule (only non-builtin)."""
+    rule = db.query(ClassificationRule).filter(ClassificationRule.id == rule_id).first()
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    if rule.is_builtin:
+        raise HTTPException(status_code=400, detail="Cannot delete built-in rules")
+
+    db.delete(rule)
+    db.commit()
+    return {"message": "Rule deleted"}
+
+
+@app.put("/api/classifications/{rule_id}/toggle")
+def toggle_classification_rule(rule_id: int, db: Session = Depends(get_db)):
+    """Toggle a classification rule active/inactive."""
+    rule = db.query(ClassificationRule).filter(ClassificationRule.id == rule_id).first()
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+
+    rule.active = not rule.active
+    db.commit()
+    return {"active": rule.active}
 
 
 if __name__ == "__main__":
