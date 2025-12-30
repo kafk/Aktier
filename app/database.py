@@ -261,3 +261,44 @@ def seed_default_stocks():
         db.rollback()
     finally:
         db.close()
+
+
+def seed_default_keywords():
+    """Seed keywords from all classification rules for scraping."""
+    db = SessionLocal()
+    try:
+        # Check if any keywords exist
+        existing = db.query(Keyword).first()
+        if existing:
+            return  # Already seeded
+
+        # Get all classification rules
+        rules = db.query(ClassificationRule).all()
+        if not rules:
+            print("No classification rules found. Run seed_classification_rules first.")
+            return
+
+        # Extract unique keywords from all rules
+        all_keywords = set()
+        for rule in rules:
+            keywords = rule.keywords.split(",")
+            for kw in keywords:
+                kw = kw.strip().lower()
+                if kw and len(kw) > 2:  # Skip very short keywords
+                    all_keywords.add(kw)
+
+        # Add each keyword
+        for word in sorted(all_keywords):
+            keyword = Keyword(
+                word=word,
+                active=True
+            )
+            db.add(keyword)
+
+        db.commit()
+        print(f"Seeded {len(all_keywords)} keywords from classification rules")
+    except Exception as e:
+        print(f"Error seeding keywords: {e}")
+        db.rollback()
+    finally:
+        db.close()
