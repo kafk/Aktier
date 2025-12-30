@@ -54,6 +54,8 @@ class AlertResponse(BaseModel):
     matched_keywords: str
     event_type: Optional[str]
     sentiment: Optional[str]
+    impact_score: Optional[int]
+    score_breakdown: Optional[str]
     is_read: bool
     is_notified: bool
     created_at: datetime

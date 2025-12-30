@@ -28,6 +28,7 @@ from .schemas import (
     ClassificationRuleResponse,
 )
 from .scraper import scrape_all_sources, check_keywords, get_news_cutoff_date
+from .scorer import calculate_impact_score, score_breakdown_to_json
 from .classifier import classify_event
 
 import logging
@@ -145,15 +146,28 @@ async def scrape_news_job(force: bool = False):
                             custom_rules_list
                         )
 
+                        # Calculate impact score
+                        impact_score, score_breakdown = calculate_impact_score(
+                            event_type=event_type,
+                            sentiment=sentiment,
+                            title=article_data.title,
+                            summary=article_data.summary or "",
+                            source=article_data.source,
+                            url=article_data.url,
+                            stock_symbol=stock.symbol
+                        )
+
                         alert = Alert(
                             stock_id=stock.id,
                             article_id=article.id,
                             matched_keywords=", ".join(matched_keywords),
                             event_type=event_type,
                             sentiment=sentiment,
+                            impact_score=impact_score,
+                            score_breakdown=score_breakdown_to_json(score_breakdown),
                         )
                         db.add(alert)
-                        logger.info(f"Alert created for {stock.symbol}: {matched_keywords} (event: {event_type}, sentiment: {sentiment})")
+                        logger.info(f"Alert created for {stock.symbol}: {matched_keywords} (event: {event_type}, score: {impact_score})")
 
                 db.commit()
             except Exception as e:
@@ -360,6 +374,17 @@ def scan_existing_articles_for_keyword(db: Session, keyword: str):
                         custom_rules_list
                     )
 
+                    # Calculate impact score
+                    impact_score, score_breakdown = calculate_impact_score(
+                        event_type=event_type,
+                        sentiment=sentiment,
+                        title=article.title,
+                        summary=article.summary or "",
+                        source=article.source,
+                        url=article.url,
+                        stock_symbol=stock.symbol
+                    )
+
                     # Create new alert
                     alert = Alert(
                         stock_id=stock.id,
@@ -367,6 +392,8 @@ def scan_existing_articles_for_keyword(db: Session, keyword: str):
                         matched_keywords=keyword,
                         event_type=event_type,
                         sentiment=sentiment,
+                        impact_score=impact_score,
+                        score_breakdown=score_breakdown_to_json(score_breakdown),
                     )
                     db.add(alert)
                     alerts_created += 1

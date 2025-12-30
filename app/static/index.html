@@ -47,7 +47,7 @@
                     <a href="/classifications" class="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
                         Classifications
                     </a>
-                    <span class="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">v1.5.0</span>
+                    <span class="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">v1.6.0</span>
                 </div>
             </div>
         </header>
@@ -443,8 +443,9 @@
                 list.innerHTML = alerts.map(alert => `
                     <div class="p-3 rounded-lg bg-gray-50 ${alert.is_read ? '' : 'alert-unread'} fade-in">
                         <div class="flex justify-between items-start mb-2">
-                            <div class="flex items-center gap-2">
+                            <div class="flex items-center gap-2 flex-wrap">
                                 <span class="font-semibold text-blue-600">${alert.stock?.symbol || 'Unknown'}</span>
+                                ${getImpactBadge(alert.impact_score)}
                                 ${alert.event_type ? `
                                     <span class="text-xs px-2 py-0.5 rounded ${getSentimentClass(alert.sentiment)}">
                                         ${formatEventType(alert.event_type)}
@@ -701,6 +702,26 @@
         function highlightKeywords(text, keywords) {
             // Just return text without highlighting
             return text;
+        }
+
+        function getImpactBadge(score) {
+            if (!score) return '';
+
+            const bands = {
+                1: { label: 'Noise', color: 'bg-gray-200 text-gray-600' },
+                2: { label: 'Noise', color: 'bg-gray-200 text-gray-600' },
+                3: { label: 'Low', color: 'bg-blue-200 text-blue-800' },
+                4: { label: 'Low', color: 'bg-blue-200 text-blue-800' },
+                5: { label: 'Medium', color: 'bg-yellow-200 text-yellow-800' },
+                6: { label: 'Medium', color: 'bg-yellow-200 text-yellow-800' },
+                7: { label: 'High', color: 'bg-orange-200 text-orange-800' },
+                8: { label: 'High', color: 'bg-orange-200 text-orange-800' },
+                9: { label: 'Critical', color: 'bg-red-300 text-red-900 font-bold' },
+                10: { label: 'Critical', color: 'bg-red-300 text-red-900 font-bold' }
+            };
+
+            const band = bands[score] || bands[1];
+            return `<span class="text-xs px-2 py-0.5 rounded ${band.color}" title="Impact Score: ${score}/10">${score} ${band.label}</span>`;
         }
     </script>
 </body>

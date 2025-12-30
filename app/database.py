@@ -56,6 +56,8 @@ class Alert(Base):
     matched_keywords = Column(String(500), nullable=False)
     event_type = Column(String(50), nullable=True)  # e.g., EARNINGS_BEAT, GUIDANCE_CUT
     sentiment = Column(String(20), nullable=True)   # positive, negative, neutral
+    impact_score = Column(Integer, nullable=True)   # 1-10 impact score
+    score_breakdown = Column(Text, nullable=True)   # JSON breakdown of score components
     is_read = Column(Boolean, default=False)
     is_notified = Column(Boolean, default=False)    # Track if notification was sent
     created_at = Column(DateTime, default=datetime.utcnow)
