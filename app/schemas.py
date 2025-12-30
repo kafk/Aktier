@@ -127,8 +127,24 @@ class PriceTrackingResponse(BaseModel):
     price_at_alert: Optional[float]
     price_1h: Optional[float]
     price_1d: Optional[float]
+
+    # Market index prices
+    index_at_alert: Optional[float]
+    index_1d: Optional[float]
+
+    # Raw percentage changes
     change_1h_percent: Optional[float]
     change_1d_percent: Optional[float]
+
+    # Market-adjusted metrics
+    stock_abs_move_pct: Optional[float]
+    market_abs_move_pct: Optional[float]
+    market_adjusted_move_pct: Optional[float]
+    baseline_move_pct: Optional[float]
+    news_impact_pct: Optional[float]
+    impact_class: Optional[str]
+
+    # Legacy fields
     actual_impact: Optional[int]
     prediction_error: Optional[int]
     status: str

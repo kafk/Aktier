@@ -302,10 +302,12 @@
                             <div class="flex items-center gap-2">
                                 <span class="font-semibold text-blue-600">${record.stock_symbol}</span>
                                 ${getStatusBadge(record.status)}
+                                ${getImpactClassBadge(record.impact_class)}
                             </div>
                             <span class="text-xs text-gray-500">${formatDate(record.alert_time)}</span>
                         </div>
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                        <!-- Price Row -->
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm mb-2">
                             <div>
                                 <span class="text-gray-500">At Alert:</span>
                                 <span class="font-medium">${record.price_at_alert ? '$' + record.price_at_alert.toFixed(2) : '-'}</span>
@@ -325,15 +327,40 @@
                                 </span>
                             </div>
                             <div>
-                                <span class="text-gray-500">Actual Impact:</span>
+                                <span class="text-gray-500">Legacy Impact:</span>
                                 <span class="font-medium">${record.actual_impact || '-'}</span>
                                 ${record.prediction_error !== null ? `
                                     <span class="${record.prediction_error > 0 ? 'text-red-500' : record.prediction_error < 0 ? 'text-blue-500' : 'text-green-500'}">
-                                        (${record.prediction_error > 0 ? '+' : ''}${record.prediction_error} error)
+                                        (${record.prediction_error > 0 ? '+' : ''}${record.prediction_error})
                                     </span>
                                 ` : ''}
                             </div>
                         </div>
+                        <!-- Market-Adjusted Row -->
+                        ${record.news_impact_pct !== null ? `
+                        <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs border-t pt-2 mt-1">
+                            <div>
+                                <span class="text-gray-400">Stock Move:</span>
+                                <span class="font-medium">${record.stock_abs_move_pct?.toFixed(2) || '-'}%</span>
+                            </div>
+                            <div>
+                                <span class="text-gray-400">Market (SPY):</span>
+                                <span class="font-medium">${record.market_abs_move_pct?.toFixed(2) || '-'}%</span>
+                            </div>
+                            <div>
+                                <span class="text-gray-400">Adjusted:</span>
+                                <span class="font-medium">${record.market_adjusted_move_pct?.toFixed(2) || '-'}%</span>
+                            </div>
+                            <div>
+                                <span class="text-gray-400">Baseline:</span>
+                                <span class="font-medium">${record.baseline_move_pct?.toFixed(2) || '-'}%</span>
+                            </div>
+                            <div>
+                                <span class="text-gray-400">News Impact:</span>
+                                <span class="font-bold ${getNewsImpactClass(record.news_impact_pct)}">${record.news_impact_pct?.toFixed(2) || '-'}%</span>
+                            </div>
+                        </div>
+                        ` : ''}
                     </div>
                 `).join('');
             } catch (error) {
@@ -454,6 +481,25 @@
                 'error': 'bg-red-200 text-red-800'
             };
             return `<span class="text-xs px-2 py-0.5 rounded ${colors[status] || 'bg-gray-200'}">${status}</span>`;
+        }
+
+        function getImpactClassBadge(impactClass) {
+            if (!impactClass) return '';
+            const colors = {
+                'MAJOR': 'bg-red-500 text-white',
+                'SIGNIFICANT': 'bg-orange-400 text-white',
+                'MILD': 'bg-yellow-400 text-yellow-900',
+                'NOISE': 'bg-gray-300 text-gray-700'
+            };
+            return `<span class="text-xs px-2 py-0.5 rounded font-medium ${colors[impactClass] || 'bg-gray-200'}">${impactClass}</span>`;
+        }
+
+        function getNewsImpactClass(impact) {
+            if (impact === null || impact === undefined) return '';
+            if (impact >= 5) return 'text-red-600';
+            if (impact >= 3) return 'text-orange-500';
+            if (impact >= 1.5) return 'text-yellow-600';
+            return 'text-gray-500';
         }
 
         function getChangeClass(change) {

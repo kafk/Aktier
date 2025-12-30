@@ -100,11 +100,23 @@ class PriceTracking(Base):
     price_1h = Column(Float, nullable=True)
     price_1d = Column(Float, nullable=True)
 
-    # Percentage changes
+    # Market index (S&P 500) prices
+    index_at_alert = Column(Float, nullable=True)
+    index_1d = Column(Float, nullable=True)
+
+    # Raw percentage changes
     change_1h_percent = Column(Float, nullable=True)
     change_1d_percent = Column(Float, nullable=True)
 
-    # Actual impact based on price movement (1-10 scale)
+    # Market-adjusted metrics (THE important numbers)
+    stock_abs_move_pct = Column(Float, nullable=True)      # Absolute stock move
+    market_abs_move_pct = Column(Float, nullable=True)     # Absolute market move
+    market_adjusted_move_pct = Column(Float, nullable=True) # Stock - Market
+    baseline_move_pct = Column(Float, nullable=True)       # Normal daily volatility
+    news_impact_pct = Column(Float, nullable=True)         # Final: adjusted - baseline
+    impact_class = Column(String(20), nullable=True)       # MAJOR, SIGNIFICANT, MILD, NOISE
+
+    # Legacy: Actual impact based on price movement (1-10 scale)
     actual_impact = Column(Integer, nullable=True)
 
     # Comparison: predicted_score - actual_impact

@@ -1031,6 +1031,27 @@ def backfill_historical_prices(db: Session = Depends(get_db)):
                 if alert.impact_score:
                     tracking.prediction_error = alert.impact_score - tracking.actual_impact
 
+            # Update market index prices
+            if hist_data.get("index_at_alert"):
+                tracking.index_at_alert = hist_data["index_at_alert"]
+            if hist_data.get("index_1d"):
+                tracking.index_1d = hist_data["index_1d"]
+
+            # Update market-adjusted metrics
+            if hist_data.get("stock_abs_move_pct") is not None:
+                tracking.stock_abs_move_pct = hist_data["stock_abs_move_pct"]
+            if hist_data.get("market_abs_move_pct") is not None:
+                tracking.market_abs_move_pct = hist_data["market_abs_move_pct"]
+            if hist_data.get("market_adjusted_move_pct") is not None:
+                tracking.market_adjusted_move_pct = hist_data["market_adjusted_move_pct"]
+            if hist_data.get("baseline_move_pct") is not None:
+                tracking.baseline_move_pct = hist_data["baseline_move_pct"]
+            if hist_data.get("news_impact_pct") is not None:
+                tracking.news_impact_pct = hist_data["news_impact_pct"]
+            if hist_data.get("impact_class"):
+                tracking.impact_class = hist_data["impact_class"]
+                detail["impact_class"] = hist_data["impact_class"]
+
             # Update status
             if tracking.price_at_alert and tracking.price_1h and tracking.price_1d:
                 tracking.status = "complete"
@@ -1084,6 +1105,14 @@ def create_tracking_for_all_alerts(db: Session = Depends(get_db)):
             price_at_alert=hist_data.get("price_at_alert"),
             price_1h=hist_data.get("price_1h"),
             price_1d=hist_data.get("price_1d"),
+            index_at_alert=hist_data.get("index_at_alert"),
+            index_1d=hist_data.get("index_1d"),
+            stock_abs_move_pct=hist_data.get("stock_abs_move_pct"),
+            market_abs_move_pct=hist_data.get("market_abs_move_pct"),
+            market_adjusted_move_pct=hist_data.get("market_adjusted_move_pct"),
+            baseline_move_pct=hist_data.get("baseline_move_pct"),
+            news_impact_pct=hist_data.get("news_impact_pct"),
+            impact_class=hist_data.get("impact_class"),
             alert_time=alert.created_at,
             status="pending"
         )
