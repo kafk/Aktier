@@ -95,3 +95,60 @@ def get_db():
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+
+
+def seed_classification_rules():
+    """Seed built-in classification rules into the database."""
+    db = SessionLocal()
+    try:
+        # Check if any rules exist
+        existing = db.query(ClassificationRule).first()
+        if existing:
+            return  # Already seeded
+
+        # Built-in rules with their keywords
+        builtin_rules = [
+            ("EARNINGS_BEAT", "Earnings Beat", "beats,topped,exceeds,surpasses,earnings,eps,profit", "positive"),
+            ("EARNINGS_MISS", "Earnings Miss", "misses,missed,falls short,below expectations,earnings miss", "negative"),
+            ("GUIDANCE_RAISE", "Guidance Raised", "raises guidance,raised guidance,lifts outlook,boosts forecast", "positive"),
+            ("GUIDANCE_CUT", "Guidance Cut", "cuts guidance,lowers outlook,weak guidance,disappointing forecast", "negative"),
+            ("ACQUISITION", "Acquisition/Merger", "acquires,acquisition,to buy,takeover,merger,merge", "neutral"),
+            ("CEO_CHANGE", "CEO Change", "ceo resigns,ceo steps down,new ceo,ceo departs,ceo fired", "neutral"),
+            ("CFO_CHANGE", "CFO Change", "cfo resigns,cfo steps down,new cfo,cfo departs,cfo fired", "neutral"),
+            ("LAYOFFS", "Layoffs", "layoffs,laying off,job cuts,workforce reduction,downsizing,restructuring", "negative"),
+            ("FDA_APPROVAL", "FDA Approval", "fda approves,fda approved,fda approval,fda clears,fda cleared", "positive"),
+            ("FDA_REJECTION", "FDA Rejection", "fda rejects,fda rejected,fda rejection,fda denies,fda denied", "negative"),
+            ("SEC_INVESTIGATION", "SEC Investigation", "sec investigation,sec investigates,sec probe,sec inquiry,sec subpoena", "negative"),
+            ("LAWSUIT", "Lawsuit", "lawsuit,sued,sues,suing,litigation,legal action,class action", "negative"),
+            ("STOCK_BUYBACK", "Stock Buyback", "buyback,repurchase,buy back,share repurchase", "positive"),
+            ("DIVIDEND", "Dividend", "dividend raises,dividend increases,dividend hikes,declares dividend", "positive"),
+            ("STOCK_SPLIT", "Stock Split", "stock split,share split,split for", "positive"),
+            ("UPGRADE", "Analyst Upgrade", "upgrades,upgraded,raises rating,upgrade to buy,price target raised", "positive"),
+            ("DOWNGRADE", "Analyst Downgrade", "downgrades,downgraded,cuts rating,downgrade to sell,price target cut", "negative"),
+            ("PRODUCT_LAUNCH", "Product Launch", "launches,launched,unveils,unveiled,introduces,new product,new service", "positive"),
+            ("PARTNERSHIP", "Partnership", "partnership,partners with,teams up,collaboration,alliance,deal with", "positive"),
+            ("BANKRUPTCY", "Bankruptcy", "bankruptcy,chapter 11,chapter 7,insolvency,insolvent", "negative"),
+            ("IPO", "IPO", "ipo,initial public offering,goes public,going public,public debut", "neutral"),
+            ("INSIDER_BUYING", "Insider Buying", "insider buys,insider buying,insider purchased,insider acquires", "positive"),
+            ("INSIDER_SELLING", "Insider Selling", "insider sells,insider selling,insider sold,insider dumps", "negative"),
+            ("INVESTMENT", "Investment", "invests,investment,invested,investing in", "neutral"),
+        ]
+
+        for event_type, display_name, keywords, sentiment in builtin_rules:
+            rule = ClassificationRule(
+                event_type=event_type,
+                display_name=display_name,
+                keywords=keywords,
+                sentiment=sentiment,
+                is_builtin=True,
+                active=True
+            )
+            db.add(rule)
+
+        db.commit()
+        print("Seeded built-in classification rules")
+    except Exception as e:
+        print(f"Error seeding classification rules: {e}")
+        db.rollback()
+    finally:
+        db.close()
