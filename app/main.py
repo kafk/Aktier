@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from .database import get_db, init_db, Stock, Keyword, NewsArticle, Alert
+from .database import get_db, init_db, Stock, Keyword, NewsArticle, Alert, Note
 from .schemas import (
     StockCreate,
     StockResponse,
@@ -22,6 +22,8 @@ from .schemas import (
     AlertMarkRead,
     ScrapeStatus,
     ScrapeIntervalUpdate,
+    NoteUpdate,
+    NoteResponse,
 )
 from .scraper import scrape_all_sources, check_keywords, get_news_cutoff_date
 
@@ -183,7 +185,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Stock News Monitor",
     description="Monitor stock news and get alerts for keywords",
-    version="1.1.0",
+    version="1.2.0",
     lifespan=lifespan,
 )
 
@@ -455,6 +457,36 @@ def update_scrape_interval(body: ScrapeIntervalUpdate):
         logger.info(f"Scraping interval updated to {scrape_interval_minutes} minutes")
 
     return {"interval_minutes": scrape_interval_minutes}
+
+
+# ============== Notes Endpoints ==============
+
+
+@app.get("/api/notes", response_model=NoteResponse)
+def get_notes(db: Session = Depends(get_db)):
+    """Get the notepad content."""
+    note = db.query(Note).first()
+    if not note:
+        # Create default empty note
+        note = Note(content="")
+        db.add(note)
+        db.commit()
+        db.refresh(note)
+    return note
+
+
+@app.put("/api/notes", response_model=NoteResponse)
+def update_notes(body: NoteUpdate, db: Session = Depends(get_db)):
+    """Update the notepad content."""
+    note = db.query(Note).first()
+    if not note:
+        note = Note(content=body.content)
+        db.add(note)
+    else:
+        note.content = body.content
+    db.commit()
+    db.refresh(note)
+    return note
 
 
 if __name__ == "__main__":

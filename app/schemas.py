@@ -79,3 +79,16 @@ class ScrapeStatus(BaseModel):
 
 class ScrapeIntervalUpdate(BaseModel):
     interval_minutes: int
+
+
+class NoteUpdate(BaseModel):
+    content: str
+
+
+class NoteResponse(BaseModel):
+    id: int
+    content: str
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True

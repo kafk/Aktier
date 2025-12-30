@@ -48,7 +48,7 @@
                     <h1 class="text-3xl font-bold text-gray-800 mb-2">Stock News Monitor</h1>
                     <p class="text-gray-600">Monitor stock news and get alerts for keywords</p>
                 </div>
-                <span class="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">v1.1.0</span>
+                <span class="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">v1.2.0</span>
             </div>
         </header>
 
@@ -138,6 +138,20 @@
                         <!-- Keywords will be loaded here -->
                     </ul>
                 </div>
+
+                <!-- Notepad Section -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold text-gray-800">Notepad</h2>
+                        <span id="note-status" class="text-xs text-gray-400"></span>
+                    </div>
+                    <textarea
+                        id="notepad"
+                        placeholder="Write your notes here..."
+                        class="w-full h-48 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-y text-sm"
+                        oninput="saveNoteDebounced()"
+                    ></textarea>
+                </div>
             </div>
 
             <!-- Right Column: Alerts & News -->
@@ -184,6 +198,7 @@
             loadKeywords();
             loadAlerts();
             loadNews();
+            loadNotes();
 
             // Auto-refresh every 30 seconds
             setInterval(() => {
@@ -568,6 +583,59 @@
                 btn.classList.remove('btn-loading');
                 btnText.textContent = 'Scrape Now';
                 spinner.classList.add('hidden');
+            }
+        }
+
+        // Notes
+        let saveNoteTimeout = null;
+
+        async function loadNotes() {
+            try {
+                const response = await fetch(`${API_BASE}/notes`);
+                const note = await response.json();
+                document.getElementById('notepad').value = note.content || '';
+            } catch (error) {
+                console.error('Error loading notes:', error);
+            }
+        }
+
+        function saveNoteDebounced() {
+            // Show "typing..." indicator
+            document.getElementById('note-status').textContent = 'Typing...';
+
+            // Clear previous timeout
+            if (saveNoteTimeout) {
+                clearTimeout(saveNoteTimeout);
+            }
+
+            // Save after 1 second of no typing
+            saveNoteTimeout = setTimeout(saveNote, 1000);
+        }
+
+        async function saveNote() {
+            const content = document.getElementById('notepad').value;
+            const statusEl = document.getElementById('note-status');
+
+            statusEl.textContent = 'Saving...';
+
+            try {
+                const response = await fetch(`${API_BASE}/notes`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content })
+                });
+
+                if (response.ok) {
+                    statusEl.textContent = 'Saved';
+                    setTimeout(() => {
+                        statusEl.textContent = '';
+                    }, 2000);
+                } else {
+                    statusEl.textContent = 'Save failed';
+                }
+            } catch (error) {
+                console.error('Error saving note:', error);
+                statusEl.textContent = 'Save failed';
             }
         }
 
