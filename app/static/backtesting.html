@@ -27,6 +27,22 @@
             </div>
         </header>
 
+        <!-- Stocks Management -->
+        <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
+            <h2 class="text-lg font-semibold text-gray-800 mb-3">Stocks to Track</h2>
+            <div class="flex gap-3 mb-4">
+                <input type="text" id="stock-input" placeholder="Enter symbol (e.g., NVDA)"
+                    class="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    onkeypress="if(event.key === 'Enter') addStock()">
+                <button onclick="addStock()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+                    Add Stock
+                </button>
+            </div>
+            <div id="stocks-list" class="flex flex-wrap gap-2">
+                <p class="text-gray-500 text-sm">No stocks added yet.</p>
+            </div>
+        </div>
+
         <!-- Stats Overview -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <div class="bg-white rounded-xl shadow-sm p-4">
@@ -114,10 +130,111 @@
 
         // Load everything on page load
         document.addEventListener('DOMContentLoaded', () => {
+            loadStocks();
             loadStats();
             loadTracking();
             loadRecommendations();
         });
+
+        // Stock Management
+        async function loadStocks() {
+            try {
+                const response = await fetch(`${API_BASE}/backtesting/stocks`);
+                const data = await response.json();
+                renderStocks(data.stocks || []);
+            } catch (error) {
+                console.error('Error loading stocks:', error);
+            }
+        }
+
+        function renderStocks(stocks) {
+            const list = document.getElementById('stocks-list');
+            if (stocks.length === 0) {
+                list.innerHTML = '<p class="text-gray-500 text-sm">No stocks added yet.</p>';
+                return;
+            }
+            list.innerHTML = stocks.map(symbol => `
+                <div class="flex items-center gap-1 bg-blue-100 text-blue-800 px-3 py-1 rounded-lg">
+                    <span class="font-medium">${symbol}</span>
+                    <button onclick="fetchStockHistory('${symbol}')" class="text-blue-600 hover:text-blue-800 ml-1" title="Fetch history">
+                        📊
+                    </button>
+                    <button onclick="removeStock('${symbol}')" class="text-red-500 hover:text-red-700 ml-1" title="Remove">
+                        ×
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        async function addStock() {
+            const input = document.getElementById('stock-input');
+            const symbol = input.value.trim().toUpperCase();
+            if (!symbol) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/backtesting/stocks?symbol=${encodeURIComponent(symbol)}`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    renderStocks(result.stocks);
+                    input.value = '';
+                } else {
+                    alert(result.detail || 'Error adding stock');
+                }
+            } catch (error) {
+                console.error('Error adding stock:', error);
+                alert('Error adding stock');
+            }
+        }
+
+        async function removeStock(symbol) {
+            if (!confirm(`Remove ${symbol}?`)) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/backtesting/stocks/${symbol}`, {
+                    method: 'DELETE'
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    renderStocks(result.stocks);
+                } else {
+                    alert(result.detail || 'Error removing stock');
+                }
+            } catch (error) {
+                console.error('Error removing stock:', error);
+            }
+        }
+
+        async function fetchStockHistory(symbol) {
+            try {
+                const btn = event.target;
+                btn.textContent = '⏳';
+
+                const response = await fetch(`${API_BASE}/backtesting/stocks/${symbol}/fetch-history`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+
+                btn.textContent = '📊';
+
+                if (result.data_points && result.data_points.length > 0) {
+                    let message = `${symbol} - Last 7 days:\n\n`;
+                    result.data_points.forEach(dp => {
+                        const change = dp.price_1d_later && dp.price_at_time
+                            ? ((dp.price_1d_later - dp.price_at_time) / dp.price_at_time * 100).toFixed(2)
+                            : 'N/A';
+                        message += `${dp.date}: $${dp.price_at_time?.toFixed(2) || 'N/A'} → $${dp.price_1d_later?.toFixed(2) || 'N/A'} (${change}%)\n`;
+                    });
+                    alert(message);
+                } else {
+                    alert(`No data available for ${symbol}`);
+                }
+            } catch (error) {
+                console.error('Error fetching history:', error);
+                alert('Error fetching history');
+            }
+        }
 
         async function loadStats() {
             try {

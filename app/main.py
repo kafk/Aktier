@@ -1138,6 +1138,107 @@ def create_tracking_for_all_alerts(db: Session = Depends(get_db)):
     }
 
 
+# ============ Backtesting Stocks (JSON Storage) ============
+
+import json
+
+BACKTESTING_STOCKS_FILE = os.path.join(os.path.dirname(__file__), "data", "backtesting_stocks.json")
+
+
+def load_backtesting_stocks() -> dict:
+    """Load backtesting stocks from JSON file."""
+    try:
+        if os.path.exists(BACKTESTING_STOCKS_FILE):
+            with open(BACKTESTING_STOCKS_FILE, "r") as f:
+                return json.load(f)
+    except Exception as e:
+        logger.error(f"Error loading backtesting stocks: {e}")
+    return {"stocks": [], "last_updated": None}
+
+
+def save_backtesting_stocks(data: dict):
+    """Save backtesting stocks to JSON file."""
+    try:
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(BACKTESTING_STOCKS_FILE), exist_ok=True)
+        data["last_updated"] = datetime.utcnow().isoformat()
+        with open(BACKTESTING_STOCKS_FILE, "w") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        logger.error(f"Error saving backtesting stocks: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save stocks")
+
+
+@app.get("/api/backtesting/stocks")
+def get_backtesting_stocks():
+    """Get all backtesting stocks from JSON file."""
+    return load_backtesting_stocks()
+
+
+@app.post("/api/backtesting/stocks")
+def add_backtesting_stock(symbol: str):
+    """Add a stock to backtesting list."""
+    symbol = symbol.upper().strip()
+    if not symbol:
+        raise HTTPException(status_code=400, detail="Symbol is required")
+
+    data = load_backtesting_stocks()
+
+    # Check if already exists
+    if symbol in data["stocks"]:
+        return {"message": f"{symbol} already in list", "stocks": data["stocks"]}
+
+    data["stocks"].append(symbol)
+    save_backtesting_stocks(data)
+
+    return {"message": f"Added {symbol}", "stocks": data["stocks"]}
+
+
+@app.delete("/api/backtesting/stocks/{symbol}")
+def remove_backtesting_stock(symbol: str):
+    """Remove a stock from backtesting list."""
+    symbol = symbol.upper().strip()
+    data = load_backtesting_stocks()
+
+    if symbol in data["stocks"]:
+        data["stocks"].remove(symbol)
+        save_backtesting_stocks(data)
+        return {"message": f"Removed {symbol}", "stocks": data["stocks"]}
+
+    raise HTTPException(status_code=404, detail=f"{symbol} not found in list")
+
+
+@app.post("/api/backtesting/stocks/{symbol}/fetch-history")
+def fetch_stock_history(symbol: str):
+    """Fetch historical price data for a stock and create sample tracking records."""
+    symbol = symbol.upper().strip()
+
+    # Get historical prices for the past week
+    from datetime import timedelta
+
+    results = []
+    now = datetime.utcnow()
+
+    # Create sample data points for the past 7 days
+    for days_ago in range(1, 8):
+        alert_time = now - timedelta(days=days_ago)
+        hist_data = get_historical_prices_for_alert(symbol, alert_time)
+
+        if "error" not in hist_data:
+            results.append({
+                "date": alert_time.strftime("%Y-%m-%d"),
+                "price_at_time": hist_data.get("price_at_alert"),
+                "price_1d_later": hist_data.get("price_1d"),
+                "data_quality": hist_data.get("data_quality")
+            })
+
+    return {
+        "symbol": symbol,
+        "data_points": results,
+        "message": f"Fetched {len(results)} data points for {symbol}"
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
 
