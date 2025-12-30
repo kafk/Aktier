@@ -20,6 +20,75 @@ HEADERS = {
 }
 
 
+def parse_relative_time(time_str: str) -> Optional[datetime]:
+    """Parse relative time strings like '1h ago', '2d ago', '30m ago'."""
+    if not time_str:
+        return None
+
+    time_str = time_str.lower().strip()
+    now = datetime.now(SWEDISH_TZ)
+
+    # Match patterns like "1h ago", "2 hours ago", "30m ago", "1d ago"
+    patterns = [
+        (r'(\d+)\s*m(?:in(?:ute)?s?)?\s*ago', 'minutes'),
+        (r'(\d+)\s*h(?:our)?s?\s*ago', 'hours'),
+        (r'(\d+)\s*d(?:ay)?s?\s*ago', 'days'),
+        (r'(\d+)\s*w(?:eek)?s?\s*ago', 'weeks'),
+        (r'yesterday', 'yesterday'),
+    ]
+
+    for pattern, unit in patterns:
+        match = re.search(pattern, time_str)
+        if match:
+            if unit == 'yesterday':
+                return now - timedelta(days=1)
+            value = int(match.group(1))
+            if unit == 'minutes':
+                return now - timedelta(minutes=value)
+            elif unit == 'hours':
+                return now - timedelta(hours=value)
+            elif unit == 'days':
+                return now - timedelta(days=value)
+            elif unit == 'weeks':
+                return now - timedelta(weeks=value)
+
+    return None
+
+
+def parse_date_string(date_str: str) -> Optional[datetime]:
+    """Parse various date string formats."""
+    if not date_str:
+        return None
+
+    # Try relative time first
+    relative = parse_relative_time(date_str)
+    if relative:
+        return relative
+
+    # Try various date formats
+    date_formats = [
+        "%a, %B %d, %Y at %I:%M %p",  # Mon, December 29, 2025 at 4:48 PM
+        "%B %d, %Y at %I:%M %p",       # December 29, 2025 at 4:48 PM
+        "%Y-%m-%dT%H:%M:%S",           # ISO format
+        "%Y-%m-%d %H:%M:%S",
+        "%b %d, %Y",                    # Dec 29, 2025
+        "%B %d, %Y",                    # December 29, 2025
+    ]
+
+    # Clean up the string
+    clean_str = re.sub(r'\s+GMT[+-]\d+', '', date_str)  # Remove GMT offset
+    clean_str = re.sub(r'\s+', ' ', clean_str).strip()
+
+    for fmt in date_formats:
+        try:
+            parsed = datetime.strptime(clean_str, fmt)
+            return parsed.replace(tzinfo=SWEDISH_TZ)
+        except ValueError:
+            continue
+
+    return None
+
+
 class NewsArticle:
     def __init__(
         self,
@@ -91,13 +160,42 @@ async def scrape_yahoo_finance_news(symbol: str) -> list[NewsArticle]:
                     source_elem = item.find(class_=re.compile(r"source|provider|publisher"))
                     source = source_elem.get_text(strip=True) if source_elem else "Yahoo Finance"
 
+                    # Try to get publication time
+                    published_at = None
+                    # Look for time element
+                    time_elem = item.find("time")
+                    if time_elem:
+                        # Try datetime attribute first
+                        datetime_attr = time_elem.get("datetime")
+                        if datetime_attr:
+                            published_at = parse_date_string(datetime_attr)
+                        if not published_at:
+                            published_at = parse_date_string(time_elem.get_text(strip=True))
+
+                    # Try other common time patterns
+                    if not published_at:
+                        time_span = item.find(class_=re.compile(r"time|date|ago|timestamp"))
+                        if time_span:
+                            published_at = parse_date_string(time_span.get_text(strip=True))
+
+                    # Look for text containing "ago" anywhere in the item
+                    if not published_at:
+                        item_text = item.get_text()
+                        ago_match = re.search(r'(\d+\s*[hmd](?:ours?|ins?|ays?)?\s*ago)', item_text, re.IGNORECASE)
+                        if ago_match:
+                            published_at = parse_relative_time(ago_match.group(1))
+
+                    # Fallback to now if no date found
+                    if not published_at:
+                        published_at = datetime.now(SWEDISH_TZ)
+
                     articles.append(
                         NewsArticle(
                             title=title,
                             url=href,
                             summary=summary,
                             source=source,
-                            published_at=datetime.utcnow(),  # Yahoo doesn't always show exact time
+                            published_at=published_at,
                             stock_symbol=symbol,
                         )
                     )
