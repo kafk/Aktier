@@ -48,12 +48,24 @@
                         <span id="unread-count" class="font-semibold text-red-600">0</span>
                     </div>
                 </div>
-                <div class="flex gap-4 items-center">
+                <div class="flex gap-4 items-center flex-wrap">
                     <div class="text-sm">
                         <span id="scrape-status" class="px-2 py-1 rounded text-xs font-medium">...</span>
                     </div>
                     <div class="text-sm text-gray-500">
                         Last scrape: <span id="last-scrape">Never</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm text-gray-500">Interval:</span>
+                        <select id="scrape-interval" onchange="updateInterval()" class="border border-gray-300 rounded px-2 py-1 text-sm">
+                            <option value="1">1 min</option>
+                            <option value="2">2 min</option>
+                            <option value="5" selected>5 min</option>
+                            <option value="10">10 min</option>
+                            <option value="15">15 min</option>
+                            <option value="30">30 min</option>
+                            <option value="60">60 min</option>
+                        </select>
                     </div>
                     <button onclick="scrapeNow()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
                         Scrape Now
@@ -179,12 +191,44 @@
                 }
                 document.getElementById('unread-count').textContent = status.unread_alerts;
 
+                // Update interval dropdown
+                const intervalSelect = document.getElementById('scrape-interval');
+                if (status.scrape_interval_minutes) {
+                    intervalSelect.value = status.scrape_interval_minutes.toString();
+                }
+
                 if (status.last_scrape) {
                     const date = new Date(status.last_scrape);
                     document.getElementById('last-scrape').textContent = date.toLocaleTimeString();
                 }
             } catch (error) {
                 console.error('Error loading status:', error);
+            }
+        }
+
+        // Update scrape interval
+        async function updateInterval() {
+            const intervalSelect = document.getElementById('scrape-interval');
+            const interval = parseInt(intervalSelect.value);
+
+            try {
+                const response = await fetch(`${API_BASE}/settings/interval`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ interval_minutes: interval })
+                });
+
+                if (response.ok) {
+                    console.log(`Interval updated to ${interval} minutes`);
+                } else {
+                    const error = await response.json();
+                    alert(error.detail || 'Failed to update interval');
+                    loadStatus(); // Reset to actual value
+                }
+            } catch (error) {
+                console.error('Error updating interval:', error);
+                alert('Failed to update interval');
+                loadStatus(); // Reset to actual value
             }
         }
 

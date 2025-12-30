@@ -21,6 +21,7 @@ from .schemas import (
     AlertResponse,
     AlertMarkRead,
     ScrapeStatus,
+    ScrapeIntervalUpdate,
 )
 from .scraper import scrape_all_sources, check_keywords, get_news_cutoff_date
 
@@ -33,6 +34,7 @@ logger = logging.getLogger(__name__)
 # Global scheduler
 scheduler: Optional[AsyncIOScheduler] = None
 last_scrape_time: Optional[datetime] = None
+scrape_interval_minutes: int = 5  # Default: every 5 minutes
 
 # Swedish timezone for schedule
 SWEDISH_TZ = ZoneInfo("Europe/Stockholm")
@@ -359,7 +361,7 @@ def mark_all_alerts_read(db: Session = Depends(get_db)):
 @app.get("/api/status", response_model=ScrapeStatus)
 def get_status(db: Session = Depends(get_db)):
     """Get current monitoring status."""
-    global last_scrape_time, scheduler
+    global last_scrape_time, scheduler, scrape_interval_minutes
 
     next_scrape = None
     if scheduler:
@@ -376,6 +378,7 @@ def get_status(db: Session = Depends(get_db)):
         unread_alerts=db.query(Alert).filter(Alert.is_read == False).count(),
         within_scrape_hours=is_within_scrape_hours(),
         scrape_hours="08:30-22:00 (Swedish time)",
+        scrape_interval_minutes=scrape_interval_minutes,
     )
 
 
@@ -384,6 +387,28 @@ async def scrape_now():
     """Trigger an immediate scrape (bypasses time restrictions)."""
     asyncio.create_task(scrape_news_job(force=True))
     return {"message": "Scrape started"}
+
+
+@app.put("/api/settings/interval")
+def update_scrape_interval(body: ScrapeIntervalUpdate):
+    """Update the scraping interval."""
+    global scrape_interval_minutes, scheduler
+
+    # Validate interval (minimum 1 minute, maximum 60 minutes)
+    if body.interval_minutes < 1 or body.interval_minutes > 60:
+        raise HTTPException(status_code=400, detail="Interval must be between 1 and 60 minutes")
+
+    scrape_interval_minutes = body.interval_minutes
+
+    # Reschedule the job with new interval
+    if scheduler:
+        scheduler.reschedule_job(
+            "scrape_news",
+            trigger=IntervalTrigger(minutes=scrape_interval_minutes)
+        )
+        logger.info(f"Scraping interval updated to {scrape_interval_minutes} minutes")
+
+    return {"interval_minutes": scrape_interval_minutes}
 
 
 if __name__ == "__main__":

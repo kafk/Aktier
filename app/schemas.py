@@ -74,3 +74,8 @@ class ScrapeStatus(BaseModel):
     unread_alerts: int
     within_scrape_hours: bool
     scrape_hours: str
+    scrape_interval_minutes: int
+
+
+class ScrapeIntervalUpdate(BaseModel):
+    interval_minutes: int
