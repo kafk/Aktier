@@ -183,7 +183,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Stock News Monitor",
     description="Monitor stock news and get alerts for keywords",
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan,
 )
 
