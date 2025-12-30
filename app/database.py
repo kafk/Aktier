@@ -102,13 +102,21 @@ class PriceTracking(Base):
 
     # Market index (S&P 500) prices
     index_at_alert = Column(Float, nullable=True)
+    index_1h = Column(Float, nullable=True)
     index_1d = Column(Float, nullable=True)
 
     # Raw percentage changes
     change_1h_percent = Column(Float, nullable=True)
     change_1d_percent = Column(Float, nullable=True)
 
-    # Market-adjusted metrics (THE important numbers)
+    # Market-adjusted metrics for +1h
+    stock_abs_move_1h_pct = Column(Float, nullable=True)
+    market_abs_move_1h_pct = Column(Float, nullable=True)
+    market_adjusted_move_1h_pct = Column(Float, nullable=True)
+    news_impact_1h_pct = Column(Float, nullable=True)
+    impact_class_1h = Column(String(20), nullable=True)
+
+    # Market-adjusted metrics for +1d
     stock_abs_move_pct = Column(Float, nullable=True)      # Absolute stock move
     market_abs_move_pct = Column(Float, nullable=True)     # Absolute market move
     market_adjusted_move_pct = Column(Float, nullable=True) # Stock - Market

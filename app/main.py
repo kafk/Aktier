@@ -661,19 +661,28 @@ async def backtesting_page():
     return FileResponse(os.path.join(static_path, "backtesting.html"))
 
 
-@app.get("/api/backtesting/tracking", response_model=list[PriceTrackingResponse])
+@app.get("/api/backtesting/tracking")
 def get_price_tracking(
-    limit: int = Query(default=50, le=200),
+    limit: int = Query(default=10, le=200),
+    offset: int = Query(default=0, ge=0),
     status: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    """Get all price tracking records."""
+    """Get price tracking records with pagination."""
     query = db.query(PriceTracking).order_by(PriceTracking.alert_time.desc())
 
     if status:
         query = query.filter(PriceTracking.status == status)
 
-    return query.limit(limit).all()
+    total = query.count()
+    records = query.offset(offset).limit(limit).all()
+
+    return {
+        "records": [PriceTrackingResponse.model_validate(r) for r in records],
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    }
 
 
 @app.post("/api/backtesting/track/{alert_id}")
@@ -1034,10 +1043,24 @@ def backfill_historical_prices(db: Session = Depends(get_db)):
             # Update market index prices
             if hist_data.get("index_at_alert"):
                 tracking.index_at_alert = hist_data["index_at_alert"]
+            if hist_data.get("index_1h"):
+                tracking.index_1h = hist_data["index_1h"]
             if hist_data.get("index_1d"):
                 tracking.index_1d = hist_data["index_1d"]
 
-            # Update market-adjusted metrics
+            # Update +1h market-adjusted metrics
+            if hist_data.get("stock_abs_move_1h_pct") is not None:
+                tracking.stock_abs_move_1h_pct = hist_data["stock_abs_move_1h_pct"]
+            if hist_data.get("market_abs_move_1h_pct") is not None:
+                tracking.market_abs_move_1h_pct = hist_data["market_abs_move_1h_pct"]
+            if hist_data.get("market_adjusted_move_1h_pct") is not None:
+                tracking.market_adjusted_move_1h_pct = hist_data["market_adjusted_move_1h_pct"]
+            if hist_data.get("news_impact_1h_pct") is not None:
+                tracking.news_impact_1h_pct = hist_data["news_impact_1h_pct"]
+            if hist_data.get("impact_class_1h"):
+                tracking.impact_class_1h = hist_data["impact_class_1h"]
+
+            # Update +1d market-adjusted metrics
             if hist_data.get("stock_abs_move_pct") is not None:
                 tracking.stock_abs_move_pct = hist_data["stock_abs_move_pct"]
             if hist_data.get("market_abs_move_pct") is not None:
@@ -1106,7 +1129,15 @@ def create_tracking_for_all_alerts(db: Session = Depends(get_db)):
             price_1h=hist_data.get("price_1h"),
             price_1d=hist_data.get("price_1d"),
             index_at_alert=hist_data.get("index_at_alert"),
+            index_1h=hist_data.get("index_1h"),
             index_1d=hist_data.get("index_1d"),
+            # +1h metrics
+            stock_abs_move_1h_pct=hist_data.get("stock_abs_move_1h_pct"),
+            market_abs_move_1h_pct=hist_data.get("market_abs_move_1h_pct"),
+            market_adjusted_move_1h_pct=hist_data.get("market_adjusted_move_1h_pct"),
+            news_impact_1h_pct=hist_data.get("news_impact_1h_pct"),
+            impact_class_1h=hist_data.get("impact_class_1h"),
+            # +1d metrics
             stock_abs_move_pct=hist_data.get("stock_abs_move_pct"),
             market_abs_move_pct=hist_data.get("market_abs_move_pct"),
             market_adjusted_move_pct=hist_data.get("market_adjusted_move_pct"),

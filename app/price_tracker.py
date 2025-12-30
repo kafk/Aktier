@@ -449,6 +449,13 @@ def get_historical_prices_for_alert(
                         spy_idx = spy_diffs.argmin()
                         result["index_at_alert"] = float(spy_hist['Close'].iloc[spy_idx])
 
+                    # Index at +1h
+                    if time_1h <= now:
+                        spy_diffs_1h = abs(spy_hist.index - time_1h)
+                        if len(spy_diffs_1h) > 0:
+                            spy_idx_1h = spy_diffs_1h.argmin()
+                            result["index_1h"] = float(spy_hist['Close'].iloc[spy_idx_1h])
+
                     # Index at +1d
                     if time_1d <= now:
                         spy_diffs_1d = abs(spy_hist.index - time_1d)
@@ -463,16 +470,32 @@ def get_historical_prices_for_alert(
             if baseline is not None:
                 result["baseline_move_pct"] = baseline
 
-        # Calculate news impact if we have enough data
+        # Calculate news impact for +1h
+        if result["price_at_alert"] and result["price_1h"]:
+            impact_1h = calculate_news_impact(
+                price_at_event=result["price_at_alert"],
+                price_1d=result["price_1h"],  # Using price_1h for the "end" price
+                index_at_event=result.get("index_at_alert"),
+                index_1d=result.get("index_1h"),  # Using index_1h
+                baseline_move=result.get("baseline_move_pct")
+            )
+            # Store with _1h suffix
+            result["stock_abs_move_1h_pct"] = impact_1h.get("stock_abs_move_pct")
+            result["market_abs_move_1h_pct"] = impact_1h.get("market_abs_move_pct")
+            result["market_adjusted_move_1h_pct"] = impact_1h.get("market_adjusted_move_pct")
+            result["news_impact_1h_pct"] = impact_1h.get("news_impact_pct")
+            result["impact_class_1h"] = impact_1h.get("impact_class")
+
+        # Calculate news impact for +1d
         if result["price_at_alert"] and result["price_1d"]:
-            impact_data = calculate_news_impact(
+            impact_1d = calculate_news_impact(
                 price_at_event=result["price_at_alert"],
                 price_1d=result["price_1d"],
                 index_at_event=result.get("index_at_alert"),
                 index_1d=result.get("index_1d"),
                 baseline_move=result.get("baseline_move_pct")
             )
-            result.update(impact_data)
+            result.update(impact_1d)
 
         return result
 

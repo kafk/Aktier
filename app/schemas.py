@@ -130,13 +130,21 @@ class PriceTrackingResponse(BaseModel):
 
     # Market index prices
     index_at_alert: Optional[float]
+    index_1h: Optional[float]
     index_1d: Optional[float]
 
     # Raw percentage changes
     change_1h_percent: Optional[float]
     change_1d_percent: Optional[float]
 
-    # Market-adjusted metrics
+    # Market-adjusted metrics for +1h
+    stock_abs_move_1h_pct: Optional[float]
+    market_abs_move_1h_pct: Optional[float]
+    market_adjusted_move_1h_pct: Optional[float]
+    news_impact_1h_pct: Optional[float]
+    impact_class_1h: Optional[str]
+
+    # Market-adjusted metrics for +1d
     stock_abs_move_pct: Optional[float]
     market_abs_move_pct: Optional[float]
     market_adjusted_move_pct: Optional[float]
