@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock News Monitor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .alert-unread {
+            border-left: 4px solid #ef4444;
+        }
+        .keyword-highlight {
+            background-color: #fef08a;
+            padding: 0 2px;
+            border-radius: 2px;
+        }
+        .fade-in {
+            animation: fadeIn 0.3s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-7xl">
+        <!-- Header -->
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">Stock News Monitor</h1>
+            <p class="text-gray-600">Monitor stock news and get alerts for keywords</p>
+        </header>
+
+        <!-- Status Bar -->
+        <div id="status-bar" class="bg-white rounded-lg shadow p-4 mb-6">
+            <div class="flex flex-wrap gap-4 items-center justify-between">
+                <div class="flex gap-6">
+                    <div>
+                        <span class="text-gray-500 text-sm">Stocks Monitored:</span>
+                        <span id="stocks-count" class="font-semibold text-blue-600">0</span>
+                    </div>
+                    <div>
+                        <span class="text-gray-500 text-sm">Keywords Active:</span>
+                        <span id="keywords-count" class="font-semibold text-green-600">0</span>
+                    </div>
+                    <div>
+                        <span class="text-gray-500 text-sm">Unread Alerts:</span>
+                        <span id="unread-count" class="font-semibold text-red-600">0</span>
+                    </div>
+                </div>
+                <div class="flex gap-4 items-center">
+                    <div class="text-sm">
+                        <span id="scrape-status" class="px-2 py-1 rounded text-xs font-medium">...</span>
+                    </div>
+                    <div class="text-sm text-gray-500">
+                        Last scrape: <span id="last-scrape">Never</span>
+                    </div>
+                    <button onclick="scrapeNow()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+                        Scrape Now
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Left Column: Stocks & Keywords -->
+            <div class="space-y-6">
+                <!-- Stocks Section -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4">Monitored Stocks</h2>
+                    <form onsubmit="addStock(event)" class="flex gap-2 mb-4">
+                        <input
+                            type="text"
+                            id="stock-input"
+                            placeholder="Enter stock symbol (e.g., AAPL)"
+                            class="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            required
+                        >
+                        <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-medium transition">
+                            Add
+                        </button>
+                    </form>
+                    <ul id="stocks-list" class="space-y-2">
+                        <!-- Stocks will be loaded here -->
+                    </ul>
+                </div>
+
+                <!-- Keywords Section -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4">Keywords to Monitor</h2>
+                    <form onsubmit="addKeyword(event)" class="flex gap-2 mb-4">
+                        <input
+                            type="text"
+                            id="keyword-input"
+                            placeholder="Enter keyword (e.g., earnings)"
+                            class="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                            required
+                        >
+                        <button type="submit" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-medium transition">
+                            Add
+                        </button>
+                    </form>
+                    <ul id="keywords-list" class="space-y-2">
+                        <!-- Keywords will be loaded here -->
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Right Column: Alerts & News -->
+            <div class="lg:col-span-2 space-y-6">
+                <!-- Alerts Section -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold text-gray-800">Keyword Alerts</h2>
+                        <button onclick="markAllRead()" class="text-sm text-blue-500 hover:text-blue-700">
+                            Mark all as read
+                        </button>
+                    </div>
+                    <div id="alerts-list" class="space-y-3 max-h-96 overflow-y-auto">
+                        <!-- Alerts will be loaded here -->
+                        <p class="text-gray-500 text-center py-4">No alerts yet. Add stocks and keywords to start monitoring.</p>
+                    </div>
+                </div>
+
+                <!-- News Section -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold text-gray-800">Latest News</h2>
+                        <select id="news-filter" onchange="loadNews()" class="border border-gray-300 rounded-lg px-3 py-1 text-sm">
+                            <option value="">All Stocks</option>
+                        </select>
+                    </div>
+                    <div id="news-list" class="space-y-3 max-h-96 overflow-y-auto">
+                        <!-- News will be loaded here -->
+                        <p class="text-gray-500 text-center py-4">No news articles yet.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // API Base URL
+        const API_BASE = '/api';
+
+        // Load all data on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadStatus();
+            loadStocks();
+            loadKeywords();
+            loadAlerts();
+            loadNews();
+
+            // Auto-refresh every 30 seconds
+            setInterval(() => {
+                loadStatus();
+                loadAlerts();
+                loadNews();
+            }, 30000);
+        });
+
+        // Status
+        async function loadStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/status`);
+                const status = await response.json();
+
+                document.getElementById('stocks-count').textContent = status.stocks_monitored;
+                document.getElementById('keywords-count').textContent = status.keywords_active;
+
+                // Update scrape status indicator
+                const scrapeStatusEl = document.getElementById('scrape-status');
+                if (status.within_scrape_hours) {
+                    scrapeStatusEl.textContent = 'Auto-scraping active';
+                    scrapeStatusEl.className = 'px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-700';
+                } else {
+                    scrapeStatusEl.textContent = `Paused (${status.scrape_hours})`;
+                    scrapeStatusEl.className = 'px-2 py-1 rounded text-xs font-medium bg-yellow-100 text-yellow-700';
+                }
+                document.getElementById('unread-count').textContent = status.unread_alerts;
+
+                if (status.last_scrape) {
+                    const date = new Date(status.last_scrape);
+                    document.getElementById('last-scrape').textContent = date.toLocaleTimeString();
+                }
+            } catch (error) {
+                console.error('Error loading status:', error);
+            }
+        }
+
+        // Stocks
+        async function loadStocks() {
+            try {
+                const response = await fetch(`${API_BASE}/stocks`);
+                const stocks = await response.json();
+
+                const list = document.getElementById('stocks-list');
+                const filter = document.getElementById('news-filter');
+
+                // Update filter options
+                filter.innerHTML = '<option value="">All Stocks</option>';
+
+                if (stocks.length === 0) {
+                    list.innerHTML = '<li class="text-gray-500 text-sm">No stocks added yet</li>';
+                    return;
+                }
+
+                list.innerHTML = stocks.map(stock => `
+                    <li class="flex items-center justify-between p-2 rounded ${stock.active ? 'bg-blue-50' : 'bg-gray-100'}">
+                        <div class="flex items-center gap-2">
+                            <span class="font-semibold ${stock.active ? 'text-blue-700' : 'text-gray-400'}">${stock.symbol}</span>
+                            ${stock.name ? `<span class="text-sm text-gray-500">${stock.name}</span>` : ''}
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="toggleStock(${stock.id})" class="text-sm ${stock.active ? 'text-yellow-600 hover:text-yellow-700' : 'text-green-600 hover:text-green-700'}">
+                                ${stock.active ? 'Pause' : 'Resume'}
+                            </button>
+                            <button onclick="deleteStock(${stock.id})" class="text-sm text-red-500 hover:text-red-700">
+                                Remove
+                            </button>
+                        </div>
+                    </li>
+                `).join('');
+
+                stocks.filter(s => s.active).forEach(stock => {
+                    filter.innerHTML += `<option value="${stock.symbol}">${stock.symbol}</option>`;
+                });
+            } catch (error) {
+                console.error('Error loading stocks:', error);
+            }
+        }
+
+        async function addStock(event) {
+            event.preventDefault();
+            const input = document.getElementById('stock-input');
+            const symbol = input.value.trim().toUpperCase();
+
+            if (!symbol) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/stocks`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol })
+                });
+
+                if (response.ok) {
+                    input.value = '';
+                    loadStocks();
+                    loadStatus();
+                } else {
+                    const error = await response.json();
+                    alert(error.detail || 'Failed to add stock');
+                }
+            } catch (error) {
+                console.error('Error adding stock:', error);
+                alert('Failed to add stock');
+            }
+        }
+
+        async function toggleStock(id) {
+            try {
+                await fetch(`${API_BASE}/stocks/${id}/toggle`, { method: 'PUT' });
+                loadStocks();
+                loadStatus();
+            } catch (error) {
+                console.error('Error toggling stock:', error);
+            }
+        }
+
+        async function deleteStock(id) {
+            if (!confirm('Remove this stock from monitoring?')) return;
+
+            try {
+                await fetch(`${API_BASE}/stocks/${id}`, { method: 'DELETE' });
+                loadStocks();
+                loadStatus();
+            } catch (error) {
+                console.error('Error deleting stock:', error);
+            }
+        }
+
+        // Keywords
+        async function loadKeywords() {
+            try {
+                const response = await fetch(`${API_BASE}/keywords`);
+                const keywords = await response.json();
+
+                const list = document.getElementById('keywords-list');
+
+                if (keywords.length === 0) {
+                    list.innerHTML = '<li class="text-gray-500 text-sm">No keywords added yet</li>';
+                    return;
+                }
+
+                list.innerHTML = keywords.map(keyword => `
+                    <li class="flex items-center justify-between p-2 rounded ${keyword.active ? 'bg-green-50' : 'bg-gray-100'}">
+                        <span class="${keyword.active ? 'text-green-700' : 'text-gray-400'}">${keyword.word}</span>
+                        <button onclick="deleteKeyword(${keyword.id})" class="text-sm text-red-500 hover:text-red-700">
+                            Remove
+                        </button>
+                    </li>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading keywords:', error);
+            }
+        }
+
+        async function addKeyword(event) {
+            event.preventDefault();
+            const input = document.getElementById('keyword-input');
+            const word = input.value.trim();
+
+            if (!word) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/keywords`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ word })
+                });
+
+                if (response.ok) {
+                    input.value = '';
+                    loadKeywords();
+                    loadStatus();
+                } else {
+                    const error = await response.json();
+                    alert(error.detail || 'Failed to add keyword');
+                }
+            } catch (error) {
+                console.error('Error adding keyword:', error);
+                alert('Failed to add keyword');
+            }
+        }
+
+        async function deleteKeyword(id) {
+            if (!confirm('Remove this keyword?')) return;
+
+            try {
+                await fetch(`${API_BASE}/keywords/${id}`, { method: 'DELETE' });
+                loadKeywords();
+                loadStatus();
+            } catch (error) {
+                console.error('Error deleting keyword:', error);
+            }
+        }
+
+        // Alerts
+        async function loadAlerts() {
+            try {
+                const response = await fetch(`${API_BASE}/alerts?limit=50`);
+                const alerts = await response.json();
+
+                const list = document.getElementById('alerts-list');
+
+                if (alerts.length === 0) {
+                    list.innerHTML = '<p class="text-gray-500 text-center py-4">No alerts yet. Add stocks and keywords to start monitoring.</p>';
+                    return;
+                }
+
+                list.innerHTML = alerts.map(alert => `
+                    <div class="p-3 rounded-lg bg-gray-50 ${alert.is_read ? '' : 'alert-unread'} fade-in">
+                        <div class="flex justify-between items-start mb-2">
+                            <span class="font-semibold text-blue-600">${alert.stock?.symbol || 'Unknown'}</span>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-gray-500">${formatDate(alert.created_at)}</span>
+                                ${!alert.is_read ? `
+                                    <button onclick="markRead(${alert.id})" class="text-xs text-blue-500 hover:text-blue-700">
+                                        Mark read
+                                    </button>
+                                ` : ''}
+                            </div>
+                        </div>
+                        <a href="${alert.article?.url || '#'}" target="_blank" class="text-gray-800 hover:text-blue-600 block mb-2">
+                            ${highlightKeywords(alert.article?.title || 'No title', alert.matched_keywords)}
+                        </a>
+                        <div class="flex gap-2">
+                            ${alert.matched_keywords.split(', ').map(kw => `
+                                <span class="bg-yellow-200 text-yellow-800 text-xs px-2 py-1 rounded">${kw}</span>
+                            `).join('')}
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading alerts:', error);
+            }
+        }
+
+        async function markRead(id) {
+            try {
+                await fetch(`${API_BASE}/alerts/${id}/read`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_read: true })
+                });
+                loadAlerts();
+                loadStatus();
+            } catch (error) {
+                console.error('Error marking alert read:', error);
+            }
+        }
+
+        async function markAllRead() {
+            try {
+                await fetch(`${API_BASE}/alerts/read-all`, { method: 'PUT' });
+                loadAlerts();
+                loadStatus();
+            } catch (error) {
+                console.error('Error marking all alerts read:', error);
+            }
+        }
+
+        // News
+        async function loadNews() {
+            try {
+                const filter = document.getElementById('news-filter').value;
+                const url = filter
+                    ? `${API_BASE}/news?stock=${filter}&limit=30`
+                    : `${API_BASE}/news?limit=30`;
+
+                const response = await fetch(url);
+                const news = await response.json();
+
+                const list = document.getElementById('news-list');
+
+                if (news.length === 0) {
+                    list.innerHTML = '<p class="text-gray-500 text-center py-4">No news articles yet.</p>';
+                    return;
+                }
+
+                list.innerHTML = news.map(article => `
+                    <div class="p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition">
+                        <div class="flex justify-between items-start mb-1">
+                            <span class="font-semibold text-blue-600 text-sm">${article.stock_symbol || 'General'}</span>
+                            <span class="text-xs text-gray-500">${formatDate(article.fetched_at)}</span>
+                        </div>
+                        <a href="${article.url}" target="_blank" class="text-gray-800 hover:text-blue-600 block">
+                            ${article.title}
+                        </a>
+                        ${article.summary ? `<p class="text-sm text-gray-600 mt-1 line-clamp-2">${article.summary}</p>` : ''}
+                        ${article.source ? `<span class="text-xs text-gray-400 mt-1 block">${article.source}</span>` : ''}
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading news:', error);
+            }
+        }
+
+        // Scrape Now
+        async function scrapeNow() {
+            try {
+                await fetch(`${API_BASE}/scrape-now`, { method: 'POST' });
+                alert('Scraping started! Refresh in a few seconds to see new results.');
+                setTimeout(() => {
+                    loadStatus();
+                    loadAlerts();
+                    loadNews();
+                }, 5000);
+            } catch (error) {
+                console.error('Error triggering scrape:', error);
+                alert('Failed to start scraping');
+            }
+        }
+
+        // Helpers
+        function formatDate(dateStr) {
+            if (!dateStr) return 'Unknown';
+            const date = new Date(dateStr);
+            const now = new Date();
+            const diff = now - date;
+
+            if (diff < 60000) return 'Just now';
+            if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+            if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+            return date.toLocaleDateString();
+        }
+
+        function highlightKeywords(text, keywords) {
+            if (!keywords) return text;
+            let result = text;
+            keywords.split(', ').forEach(kw => {
+                const regex = new RegExp(`(${kw})`, 'gi');
+                result = result.replace(regex, '<span class="keyword-highlight">$1</span>');
+            });
+            return result;
+        }
+    </script>
+</body>
+</html>
