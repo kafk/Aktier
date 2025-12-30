@@ -48,7 +48,7 @@
                     <h1 class="text-3xl font-bold text-gray-800 mb-2">Stock News Monitor</h1>
                     <p class="text-gray-600">Monitor stock news and get alerts for keywords</p>
                 </div>
-                <span class="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">v1.2.0</span>
+                <span class="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">v1.3.0</span>
             </div>
         </header>
 
@@ -443,7 +443,14 @@
                 list.innerHTML = alerts.map(alert => `
                     <div class="p-3 rounded-lg bg-gray-50 ${alert.is_read ? '' : 'alert-unread'} fade-in">
                         <div class="flex justify-between items-start mb-2">
-                            <span class="font-semibold text-blue-600">${alert.stock?.symbol || 'Unknown'}</span>
+                            <div class="flex items-center gap-2">
+                                <span class="font-semibold text-blue-600">${alert.stock?.symbol || 'Unknown'}</span>
+                                ${alert.event_type ? `
+                                    <span class="text-xs px-2 py-0.5 rounded ${getSentimentClass(alert.sentiment)}">
+                                        ${formatEventType(alert.event_type)}
+                                    </span>
+                                ` : ''}
+                            </div>
                             <div class="flex items-center gap-2">
                                 <span class="text-xs text-gray-500">${formatDate(alert.created_at)}</span>
                                 ${!alert.is_read ? `
@@ -456,7 +463,7 @@
                         <a href="${alert.article?.url || '#'}" target="_blank" class="text-gray-800 hover:text-blue-600 block mb-2">
                             ${highlightKeywords(alert.article?.title || 'No title', alert.matched_keywords)}
                         </a>
-                        <div class="flex gap-2">
+                        <div class="flex flex-wrap gap-2">
                             ${alert.matched_keywords.split(', ').map(kw => `
                                 <span class="bg-yellow-200 text-yellow-800 text-xs px-2 py-1 rounded">${kw}</span>
                             `).join('')}
@@ -650,6 +657,44 @@
             if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
             if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
             return date.toLocaleDateString();
+        }
+
+        function getSentimentClass(sentiment) {
+            const classes = {
+                'positive': 'bg-green-100 text-green-800',
+                'negative': 'bg-red-100 text-red-800',
+                'neutral': 'bg-gray-100 text-gray-800'
+            };
+            return classes[sentiment] || 'bg-gray-100 text-gray-800';
+        }
+
+        function formatEventType(eventType) {
+            const labels = {
+                'EARNINGS_BEAT': 'Earnings Beat',
+                'EARNINGS_MISS': 'Earnings Miss',
+                'GUIDANCE_RAISE': 'Guidance Raised',
+                'GUIDANCE_CUT': 'Guidance Cut',
+                'ACQUISITION': 'Acquisition',
+                'CEO_CHANGE': 'CEO Change',
+                'CFO_CHANGE': 'CFO Change',
+                'LAYOFFS': 'Layoffs',
+                'FDA_APPROVAL': 'FDA Approval',
+                'FDA_REJECTION': 'FDA Rejection',
+                'SEC_INVESTIGATION': 'SEC Investigation',
+                'LAWSUIT': 'Lawsuit',
+                'STOCK_BUYBACK': 'Buyback',
+                'DIVIDEND': 'Dividend',
+                'STOCK_SPLIT': 'Stock Split',
+                'UPGRADE': 'Upgrade',
+                'DOWNGRADE': 'Downgrade',
+                'PRODUCT_LAUNCH': 'Product Launch',
+                'PARTNERSHIP': 'Partnership',
+                'BANKRUPTCY': 'Bankruptcy',
+                'IPO': 'IPO',
+                'INSIDER_BUYING': 'Insider Buy',
+                'INSIDER_SELLING': 'Insider Sell'
+            };
+            return labels[eventType] || eventType;
         }
 
         function highlightKeywords(text, keywords) {

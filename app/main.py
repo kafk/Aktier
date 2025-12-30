@@ -26,6 +26,7 @@ from .schemas import (
     NoteResponse,
 )
 from .scraper import scrape_all_sources, check_keywords, get_news_cutoff_date
+from .classifier import classify_event
 
 import logging
 import os
@@ -128,13 +129,21 @@ async def scrape_news_job(force: bool = False):
                     matched_keywords = check_keywords(text_to_check, keyword_list)
 
                     if matched_keywords:
+                        # Classify the event
+                        event_type, sentiment = classify_event(
+                            article_data.title,
+                            article_data.summary or ""
+                        )
+
                         alert = Alert(
                             stock_id=stock.id,
                             article_id=article.id,
                             matched_keywords=", ".join(matched_keywords),
+                            event_type=event_type,
+                            sentiment=sentiment,
                         )
                         db.add(alert)
-                        logger.info(f"Alert created for {stock.symbol}: {matched_keywords}")
+                        logger.info(f"Alert created for {stock.symbol}: {matched_keywords} (event: {event_type}, sentiment: {sentiment})")
 
                 db.commit()
             except Exception as e:
@@ -185,7 +194,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Stock News Monitor",
     description="Monitor stock news and get alerts for keywords",
-    version="1.2.0",
+    version="1.3.0",
     lifespan=lifespan,
 )
 
@@ -320,11 +329,19 @@ def scan_existing_articles_for_keyword(db: Session, keyword: str):
                     if keyword.lower() not in existing_alert.matched_keywords.lower():
                         existing_alert.matched_keywords += f", {keyword}"
                 else:
+                    # Classify the event
+                    event_type, sentiment = classify_event(
+                        article.title,
+                        article.summary or ""
+                    )
+
                     # Create new alert
                     alert = Alert(
                         stock_id=stock.id,
                         article_id=article.id,
                         matched_keywords=keyword,
+                        event_type=event_type,
+                        sentiment=sentiment,
                     )
                     db.add(alert)
                     alerts_created += 1

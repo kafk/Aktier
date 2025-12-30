@@ -52,6 +52,8 @@ class AlertResponse(BaseModel):
     stock_id: int
     article_id: int
     matched_keywords: str
+    event_type: Optional[str]
+    sentiment: Optional[str]
     is_read: bool
     created_at: datetime
     stock: Optional[StockResponse]

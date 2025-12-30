@@ -54,6 +54,8 @@ class Alert(Base):
     stock_id = Column(Integer, ForeignKey("stocks.id"), nullable=False)
     article_id = Column(Integer, ForeignKey("news_articles.id"), nullable=False)
     matched_keywords = Column(String(500), nullable=False)
+    event_type = Column(String(50), nullable=True)  # e.g., EARNINGS_BEAT, GUIDANCE_CUT
+    sentiment = Column(String(20), nullable=True)   # positive, negative, neutral
     is_read = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
