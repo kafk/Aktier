@@ -1301,6 +1301,118 @@ def fetch_stock_history(symbol: str):
     }
 
 
+@app.post("/api/backtesting/scrape-for-alerts")
+async def scrape_for_alerts(db: Session = Depends(get_db)):
+    """
+    Manually triggered scrape for backtesting.
+    Scrapes news for all backtesting stocks and returns count of new alerts.
+    """
+    # Load backtesting stocks
+    bt_stocks = load_backtesting_stocks()
+    symbols = bt_stocks.get("stocks", [])
+
+    if not symbols:
+        return {"alerts_found": 0, "message": "No backtesting stocks configured"}
+
+    # Get all active keywords
+    keywords = db.query(Keyword).filter(Keyword.active == True).all()
+    keyword_list = [k.word for k in keywords]
+
+    if not keyword_list:
+        return {"alerts_found": 0, "message": "No active keywords configured"}
+
+    # Get custom classification rules
+    custom_rules = db.query(ClassificationRule).filter(ClassificationRule.active == True).all()
+    custom_rules_list = [
+        {"event_type": r.event_type, "keywords": r.keywords, "sentiment": r.sentiment, "active": r.active}
+        for r in custom_rules
+    ]
+
+    alerts_created = 0
+    articles_fetched = 0
+
+    for symbol in symbols:
+        try:
+            # Ensure stock exists in database
+            stock = db.query(Stock).filter(Stock.symbol == symbol).first()
+            if not stock:
+                # Create the stock if it doesn't exist
+                stock = Stock(symbol=symbol, name=symbol, active=True)
+                db.add(stock)
+                db.flush()
+
+            # Scrape articles for this stock
+            articles = await scrape_all_sources(symbol)
+
+            for article_data in articles:
+                # Check if article already exists
+                existing = db.query(NewsArticle).filter(NewsArticle.url == article_data.url).first()
+                if existing:
+                    continue
+
+                articles_fetched += 1
+
+                # Save article
+                article = NewsArticle(
+                    title=article_data.title,
+                    summary=article_data.summary,
+                    url=article_data.url,
+                    source=article_data.source,
+                    published_at=article_data.published_at,
+                    stock_symbol=symbol,
+                )
+                db.add(article)
+                db.flush()
+
+                # Check for keyword matches
+                text_to_check = f"{article_data.title} {article_data.summary or ''}"
+                matched_keywords = check_keywords(text_to_check, keyword_list)
+
+                if matched_keywords:
+                    # Classify the event
+                    event_type, sentiment = classify_event(
+                        article_data.title,
+                        article_data.summary or "",
+                        custom_rules_list
+                    )
+
+                    # Calculate impact score
+                    impact_score, score_breakdown = calculate_impact_score(
+                        event_type=event_type,
+                        sentiment=sentiment,
+                        title=article_data.title,
+                        summary=article_data.summary or "",
+                        source=article_data.source,
+                        url=article_data.url,
+                        stock_symbol=symbol
+                    )
+
+                    alert = Alert(
+                        stock_id=stock.id,
+                        article_id=article.id,
+                        matched_keywords=", ".join(matched_keywords),
+                        event_type=event_type,
+                        sentiment=sentiment,
+                        impact_score=impact_score,
+                        score_breakdown=score_breakdown_to_json(score_breakdown),
+                    )
+                    db.add(alert)
+                    alerts_created += 1
+                    logger.info(f"Backtesting alert: {symbol} - {matched_keywords} (event: {event_type})")
+
+            db.commit()
+        except Exception as e:
+            logger.error(f"Error scraping {symbol} for backtesting: {e}")
+            db.rollback()
+
+    return {
+        "alerts_found": alerts_created,
+        "articles_fetched": articles_fetched,
+        "stocks_scraped": len(symbols),
+        "message": f"Found {alerts_created} new alerts from {articles_fetched} articles"
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
 
