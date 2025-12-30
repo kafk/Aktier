@@ -233,7 +233,10 @@ def delete_stock(stock_id: int, db: Session = Depends(get_db)):
     if not stock:
         raise HTTPException(status_code=404, detail="Stock not found")
 
-    stock.active = False
+    # Delete related alerts first
+    db.query(Alert).filter(Alert.stock_id == stock_id).delete()
+    # Delete the stock
+    db.delete(stock)
     db.commit()
     return {"message": "Stock removed"}
 
@@ -288,7 +291,8 @@ def delete_keyword(keyword_id: int, db: Session = Depends(get_db)):
     if not keyword:
         raise HTTPException(status_code=404, detail="Keyword not found")
 
-    keyword.active = False
+    # Delete the keyword
+    db.delete(keyword)
     db.commit()
     return {"message": "Keyword removed"}
 
