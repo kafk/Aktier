@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from .database import get_db, init_db, seed_classification_rules, Stock, Keyword, NewsArticle, Alert, Note, ClassificationRule, PriceTracking
+from .database import get_db, init_db, seed_classification_rules, seed_default_stocks, Stock, Keyword, NewsArticle, Alert, Note, ClassificationRule, PriceTracking
 from .schemas import (
     StockCreate,
     StockResponse,
@@ -202,6 +202,7 @@ async def lifespan(app: FastAPI):
     # Initialize database
     init_db()
     seed_classification_rules()
+    seed_default_stocks()
     logger.info("Database initialized")
 
     # Start scheduler

@@ -211,3 +211,53 @@ def seed_classification_rules():
         db.rollback()
     finally:
         db.close()
+
+
+def seed_default_stocks():
+    """Seed high-volume default stocks for scraping."""
+    db = SessionLocal()
+    try:
+        # Check if any stocks exist
+        existing = db.query(Stock).first()
+        if existing:
+            return  # Already seeded
+
+        # 20 high-volume stocks for default scraping
+        default_stocks = [
+            ("NVDA", "NVIDIA Corporation"),
+            ("AAPL", "Apple Inc."),
+            ("AMZN", "Amazon.com Inc."),
+            ("MSFT", "Microsoft Corporation"),
+            ("TSLA", "Tesla Inc."),
+            ("JPM", "JPMorgan Chase & Co."),
+            ("INTC", "Intel Corporation"),
+            ("PFE", "Pfizer Inc."),
+            ("SOFI", "SoFi Technologies Inc."),
+            ("OPEN", "Opendoor Technologies Inc."),
+            ("AAL", "American Airlines Group Inc."),
+            ("SNAP", "Snap Inc."),
+            ("F", "Ford Motor Company"),
+            ("BMNR", "Bitmine Immersion Technologies Inc."),
+            ("WULF", "TeraWulf Inc."),
+            ("ORCL", "Oracle Corporation"),
+            ("DNN", "Denison Mines Corp."),
+            ("CRWV", "CoreWeave Inc."),
+            ("WMT", "Walmart Inc."),
+            ("CSCO", "Cisco Systems Inc."),
+        ]
+
+        for symbol, name in default_stocks:
+            stock = Stock(
+                symbol=symbol,
+                name=name,
+                active=True
+            )
+            db.add(stock)
+
+        db.commit()
+        print(f"Seeded {len(default_stocks)} default high-volume stocks")
+    except Exception as e:
+        print(f"Error seeding default stocks: {e}")
+        db.rollback()
+    finally:
+        db.close()
