@@ -1,4 +1,25 @@
 {
-  "stocks": [],
-  "last_updated": null
+  "stocks": [
+    "NVDA",
+    "AAPL",
+    "AMZN",
+    "MSFT",
+    "TSLA",
+    "JPM",
+    "INTC",
+    "PFE",
+    "SOFI",
+    "OPEN",
+    "AAL",
+    "SNAP",
+    "F",
+    "BMNR",
+    "WULF",
+    "ORCL",
+    "DNN",
+    "CRWV",
+    "WMT",
+    "CSCO"
+  ],
+  "last_updated": "2025-12-30T00:00:00"
 }
