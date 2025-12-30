@@ -9,11 +9,6 @@
         .alert-unread {
             border-left: 4px solid #ef4444;
         }
-        .keyword-highlight {
-            background-color: #fef08a;
-            padding: 0 2px;
-            border-radius: 2px;
-        }
         .fade-in {
             animation: fadeIn 0.3s ease-in;
         }
@@ -698,13 +693,8 @@
         }
 
         function highlightKeywords(text, keywords) {
-            if (!keywords) return text;
-            let result = text;
-            keywords.split(', ').forEach(kw => {
-                const regex = new RegExp(`(${kw})`, 'gi');
-                result = result.replace(regex, '<span class="keyword-highlight">$1</span>');
-            });
-            return result;
+            // Just return text without highlighting
+            return text;
         }
     </script>
 </body>
