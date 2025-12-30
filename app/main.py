@@ -1,6 +1,6 @@
 import asyncio
 from contextlib import asynccontextmanager
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from typing import Optional
 from zoneinfo import ZoneInfo
 
@@ -1302,10 +1302,14 @@ def fetch_stock_history(symbol: str):
 
 
 @app.post("/api/backtesting/scrape-for-alerts")
-async def scrape_for_alerts(db: Session = Depends(get_db)):
+async def scrape_for_alerts(
+    days: int = Query(default=7, ge=1, le=30),
+    db: Session = Depends(get_db)
+):
     """
     Manually triggered scrape for backtesting.
     Scrapes news for all backtesting stocks and returns count of new alerts.
+    Days parameter controls how far back to look for articles (1-30 days).
     """
     # Load backtesting stocks
     bt_stocks = load_backtesting_stocks()
@@ -1344,7 +1348,13 @@ async def scrape_for_alerts(db: Session = Depends(get_db)):
             # Scrape articles for this stock
             articles = await scrape_all_sources(symbol)
 
+            # Calculate cutoff based on days parameter
+            cutoff_date = datetime.utcnow() - timedelta(days=days)
+
             for article_data in articles:
+                # Filter by date - skip articles older than cutoff
+                if article_data.published_at and article_data.published_at < cutoff_date:
+                    continue
                 # Check if article already exists
                 existing = db.query(NewsArticle).filter(NewsArticle.url == article_data.url).first()
                 if existing:
